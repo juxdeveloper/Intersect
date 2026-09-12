@@ -1,0 +1,39 @@
+{
+  "name": "intersect",
+  "private": true,
+  "version": "1.0.0",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "prepare:runtime": "node scripts/prepare-pyodide.mjs",
+    "build": "npm run prepare:runtime && tsc --noEmit && vite build && node scripts/generate-sw-manifest.mjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cortex-js/compute-engine": "^0.136.2",
+    "@types/three": "^0.186.0",
+    "lucide-react": "^1.50.0",
+    "mathlive": "^0.110.0",
+    "pyodide": "0.27.8",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "puppeteer-core": "^25.12.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.5.0"
+  }
+}
