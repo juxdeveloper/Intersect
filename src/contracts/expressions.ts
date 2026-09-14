@@ -111,3 +111,115 @@ export interface DomainObligation {
   /** Human-readable explanation of why this condition exists */
   readonly description: string;
 }
+
+export type EquationClassification =
+  | 'standard'
+  | 'constant-identity'
+  | 'constant-contradiction';
+
+/**
+ * Finite, typed allowlisted SymPy construction step for V3 worker execution.
+ * Contains no executable Python code, no eval(), and no arbitrary string-to-code conversions.
+ */
+export interface SymPyConstructionStep {
+  readonly op:
+    | 'Integer'
+    | 'Rational'
+    | 'Symbol'
+    | 'Constant'
+    | 'Add'
+    | 'Mul'
+    | 'Pow'
+    | 'Sin'
+    | 'Cos'
+    | 'Tan'
+    | 'Sec'
+    | 'Csc'
+    | 'Cot'
+    | 'ArcSin'
+    | 'ArcCos'
+    | 'ArcTan'
+    | 'Sinh'
+    | 'Cosh'
+    | 'Tanh'
+    | 'Exp'
+    | 'Log'
+    | 'Sqrt'
+    | 'Abs'
+    | 'Eq';
+  readonly args?: readonly SymPyConstructionStep[];
+  readonly value?: string;
+  readonly num?: string;
+  readonly den?: string;
+  readonly name?: string;
+}
+
+/**
+ * Typed allowlisted construction plan consumed by the future SymPy worker in V3.
+ */
+export interface SymPyConstructionPlan {
+  readonly planVersion: '1.0.0';
+  readonly target: 'sympy';
+  readonly entryPoint: 'build_surface_system';
+  readonly equation: SymPyConstructionStep;
+  readonly residual: SymPyConstructionStep;
+  readonly variables: readonly string[];
+  readonly domainConditions: readonly {
+    readonly id: string;
+    readonly kind: DomainObligationKind;
+    readonly condition: SymPyConstructionStep;
+    readonly description: string;
+  }[];
+}
+
+/**
+ * Prepared equation representation produced by V2 pipeline.
+ */
+export interface PreparedEquation {
+  readonly id: string;
+  readonly label: 'Surface F' | 'Surface G' | string;
+  readonly rawInput: string;
+  readonly classification: EquationClassification;
+  readonly variables: readonly ('x' | 'y' | 'z')[];
+  readonly lhs: ExpressionNode;
+  readonly rhs: ExpressionNode;
+  readonly residual: ExpressionNode;
+  readonly domainObligations: readonly DomainObligation[];
+  readonly sympyPlan: SymPyConstructionPlan;
+}
+
+export interface PreparedEquationPair {
+  readonly surfaceF: PreparedEquation;
+  readonly surfaceG: PreparedEquation;
+  readonly allVariables: readonly ('x' | 'y' | 'z')[];
+  readonly hasContradiction: boolean;
+  readonly hasIdentity: boolean;
+}
+
+export interface EquationInput {
+  /** Identifier for field tracking, e.g. 'surface-f' or 'surface-g' */
+  readonly id: string;
+  /** Human-readable label for diagnostics and UI display */
+  readonly label: 'Surface F' | 'Surface G' | string;
+  /** Raw text or LaTeX string entered by the user */
+  readonly rawInput: string;
+  /** Format of the raw input */
+  readonly format: InputFormat;
+  /** Structured representation, populated once parsed by V2 pipeline */
+  readonly structured?: ExpressionNode;
+  /** Full prepared equation package (AST, residual, domain obligations, SymPy plan) */
+  readonly prepared?: PreparedEquation;
+}
+
+/**
+ * Validates that an EquationInput has non-empty raw input and valid format.
+ */
+export function validateEquationInput(input: EquationInput): { valid: boolean; error?: string } {
+  if (!input.rawInput || input.rawInput.trim().length === 0) {
+    return { valid: false, error: `${input.label} equation cannot be empty.` };
+  }
+  if (input.format !== 'latex' && input.format !== 'ascii') {
+    return { valid: false, error: `Unsupported input format: ${input.format}` };
+  }
+  return { valid: true };
+}
