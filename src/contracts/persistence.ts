@@ -106,3 +106,102 @@ export function validateSavedRecord(record: unknown): record is SavedCalculation
     typeof r.result === 'object'
   );
 }
+
+/**
+ * Comprehensive strict validation of a stored record before restoration.
+ * Validates payload version, mathematical discriminants, exact expressions,
+ * intervals, bounds, direction, and color (Section 9).
+ */
+export function validateStrictSavedRecord(record: unknown): {
+  valid: boolean;
+  record?: SavedCalculationRecord;
+  isCorrupt?: boolean;
+  isIncompatible?: boolean;
+  error?: string;
+} {
+  if (!record || typeof record !== 'object') {
+    return { valid: false, isCorrupt: true, error: 'Record must be a non-null object.' };
+  }
+
+  const r = record as Record<string, unknown>;
+
+  if (typeof r.id !== 'string' || r.id.trim().length === 0) {
+    return { valid: false, isCorrupt: true, error: 'Missing or invalid record ID.' };
+  }
+
+  if (typeof r.schemaVersion !== 'number') {
+    return { valid: false, isCorrupt: true, error: 'Missing or invalid schemaVersion.' };
+  }
+
+  // Check future unknown schema version
+  if (r.schemaVersion > CURRENT_PERSISTENCE_SCHEMA_VERSION) {
+    return {
+      valid: false,
+      isIncompatible: true,
+      error: `Unsupported future schema version (${r.schemaVersion} > ${CURRENT_PERSISTENCE_SCHEMA_VERSION}).`,
+    };
+  }
+
+  if (typeof r.createdAt !== 'number' || !Number.isFinite(r.createdAt)) {
+    return { valid: false, isCorrupt: true, error: 'Invalid createdAt timestamp.' };
+  }
+
+  if (typeof r.curveColor !== 'string' || !isValidHexColor(r.curveColor)) {
+    return { valid: false, isCorrupt: true, error: `Invalid curveColor: ${String(r.curveColor)}` };
+  }
+
+  if (!r.request || typeof r.request !== 'object') {
+    return { valid: false, isCorrupt: true, error: 'Missing calculation request payload.' };
+  }
+
+  if (!r.result || typeof r.result !== 'object') {
+    return { valid: false, isCorrupt: true, error: 'Missing calculation result payload.' };
+  }
+
+  const res = r.result as Record<string, unknown>;
+  const allowedStatuses = [
+    'verified-curve',
+    'empty-bounded',
+    'degenerate',
+    'inconclusive',
+    'unsupported',
+    'invalid-input',
+    'cancelled',
+    'runtime-failure',
+  ];
+
+  if (typeof res.status !== 'string' || !allowedStatuses.includes(res.status)) {
+    return { valid: false, isCorrupt: true, error: `Invalid result status: ${String(res.status)}` };
+  }
+
+  // If verified-curve, validate curve structure
+  if (res.status === 'verified-curve') {
+    if (!res.curve || typeof res.curve !== 'object') {
+      return { valid: false, isCorrupt: true, error: 'Verified curve result missing exact curve object.' };
+    }
+    const c = res.curve as Record<string, unknown>;
+    if (typeof c.paramSymbol !== 'string' || typeof c.x !== 'string' || typeof c.y !== 'string' || typeof c.z !== 'string') {
+      return { valid: false, isCorrupt: true, error: 'Exact curve missing coordinates or paramSymbol.' };
+    }
+    if (!c.domain || typeof c.domain !== 'object') {
+      return { valid: false, isCorrupt: true, error: 'Exact curve missing parameter domain.' };
+    }
+  }
+
+  // Extract raw equations if missing at top-level
+  const req = r.request as Record<string, unknown>;
+  const surfaceF = typeof r.surfaceF === 'string' ? r.surfaceF : (req.surfaceF as Record<string, unknown>)?.rawInput as string ?? '';
+  const surfaceG = typeof r.surfaceG === 'string' ? r.surfaceG : (req.surfaceG as Record<string, unknown>)?.rawInput as string ?? '';
+  const direction = (r.direction === 'reverse' || req.direction === 'reverse') ? 'reverse' : 'forward';
+
+  const normalized: SavedCalculationRecord = {
+    ...(r as unknown as SavedCalculationRecord),
+    surfaceF,
+    surfaceG,
+    direction,
+    statusKind: res.status as CalculationResult['status'],
+    updatedAt: typeof r.updatedAt === 'number' ? r.updatedAt : (r.createdAt as number),
+  };
+
+  return { valid: true, record: normalized };
+}
