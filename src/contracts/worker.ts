@@ -85,3 +85,108 @@ export interface StartCalculationRequest extends BaseWorkerMessage {
   readonly jobId: string;
   readonly payload: CalculationRequest;
 }
+
+export interface CancelJobRequest extends BaseWorkerMessage {
+  readonly type: 'cancel';
+  readonly targetJobId: string;
+  readonly reason?: string;
+}
+
+export interface PingWorkerRequest extends BaseWorkerMessage {
+  readonly type: 'ping';
+}
+
+/** Application-owned test fixture for testing busy worker preemption and timeouts */
+export interface TestBusyWorkerRequest extends BaseWorkerMessage {
+  readonly type: 'test-busy-loop';
+  readonly jobId: string;
+  readonly durationMs: number;
+}
+
+export type WorkerResponse =
+  | WorkerReadyResponse
+  | PongResponse
+  | CalculationProgressResponse
+  | PreparedExpressionsResponse
+  | CalculationResultResponse
+  | JobCancelledResponse
+  | WorkerErrorResponse;
+
+export interface WorkerReadyResponse extends BaseWorkerMessage {
+  readonly type: 'worker-ready';
+  readonly runtimeInfo: {
+    readonly pyodideVersion: string;
+    readonly pythonVersion: string;
+    readonly sympyVersion: string;
+    readonly mpmathVersion: string;
+  };
+}
+
+export interface PongResponse extends BaseWorkerMessage {
+  readonly type: 'pong';
+  readonly timestamp: number;
+}
+
+export interface CalculationProgressResponse extends BaseWorkerMessage {
+  readonly type: 'progress';
+  readonly jobId: string;
+  readonly stage: 'loading-runtime' | 'loading-packages' | 'preparing-expressions' | string;
+  readonly percent?: number;
+  readonly message?: string;
+}
+
+export interface PreparedExpressionsResponse extends BaseWorkerMessage {
+  readonly type: 'prepared-expressions';
+  readonly jobId: string;
+  readonly summary: PreparedExpressionsSummary;
+}
+
+export interface CalculationResultResponse extends BaseWorkerMessage {
+  readonly type: 'result';
+  readonly jobId: string;
+  readonly result: CalculationResult;
+}
+
+export interface JobCancelledResponse extends BaseWorkerMessage {
+  readonly type: 'cancelled';
+  readonly jobId: string;
+  readonly reason: string;
+}
+
+export interface WorkerErrorResponse extends BaseWorkerMessage {
+  readonly type: 'error';
+  readonly jobId?: string;
+  readonly error: {
+    readonly code: string;
+    readonly message: string;
+    readonly fatal: boolean;
+    readonly details?: string;
+  };
+}
+
+/**
+ * Validates that an incoming response matches the currently active job ID and worker generation.
+ * Returns true if the message is fresh and should be processed; false if stale.
+ */
+export function isFreshWorkerMessage(
+  response: WorkerResponse,
+  activeJobId: string | null,
+  activeGeneration?: number,
+): boolean {
+  // If active generation is tracked, messages from dead worker generations are rejected
+  if (
+    activeGeneration !== undefined &&
+    response.workerGeneration !== undefined &&
+    response.workerGeneration !== activeGeneration
+  ) {
+    return false;
+  }
+
+  // Job-specific responses must match activeJobId
+  if ('jobId' in response && response.jobId) {
+    if (!activeJobId) return false;
+    return response.jobId === activeJobId;
+  }
+
+  return true;
+}
