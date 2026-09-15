@@ -144,3 +144,177 @@ export interface GeometryRequest {
   readonly quality: GeometryQualityPreset;
   readonly customBudget?: Partial<GeometryBudget>;
 }
+
+export interface MeshDiagnostics {
+  readonly evalCount: number;
+  readonly cellsProcessed: number;
+  readonly poleDiscardedCount: number;
+  readonly durationMs: number;
+  readonly approxResidualError?: number;
+  readonly message?: string;
+}
+
+export interface MeshGeometryBuffer {
+  readonly status: GeometryStatus;
+  /** Flat [x0, y0, z0, x1, y1, z1, ...] in Float32Array */
+  readonly positions: Float32Array;
+  /** Flat [nx0, ny0, nz0, ...] in Float32Array */
+  readonly normals: Float32Array;
+  /** Triangle vertex indices in Uint32Array */
+  readonly indices: Uint32Array;
+  readonly vertexCount: number;
+  readonly triangleCount: number;
+  readonly boundingBox: WorldBounds | null;
+  readonly diagnostics: MeshDiagnostics;
+  /** Optional GeoGebra-style coordinate section guide curve segments [x1,y1,z1, x2,y2,z2, ...] */
+  readonly guideCurvesPositions?: Float32Array;
+}
+
+export interface CurveDiagnostics {
+  readonly subdivisions: number;
+  readonly clippedSegments: number;
+  readonly durationMs: number;
+  readonly message?: string;
+}
+
+export interface CurveGeometryBuffer {
+  readonly status: GeometryStatus;
+  /** Flat [x0, y0, z0, x1, y1, z1, ...] in Float32Array */
+  readonly positions: Float32Array;
+  /** Double-precision parameter values corresponding to each sample in Float64Array */
+  readonly tValues: Float64Array;
+  /** Indices into positions where independent polyline segments begin in Uint32Array */
+  readonly segmentBreaks: Uint32Array;
+  readonly sampleCount: number;
+  readonly segmentCount: number;
+  readonly boundingBox: WorldBounds | null;
+  readonly traversalOrientation: TraversalDirection;
+  readonly isClosed: boolean;
+  readonly isPeriodic: boolean;
+  readonly diagnostics: CurveDiagnostics;
+}
+
+export interface GeometryResult {
+  readonly jobId: string;
+  readonly calculationId: string | number;
+  readonly workerGeneration: number;
+  readonly renderRegion: WorldBounds;
+  readonly surfaceF: MeshGeometryBuffer;
+  readonly surfaceG: MeshGeometryBuffer;
+  readonly curve: CurveGeometryBuffer | null;
+  readonly totalDurationMs: number;
+  readonly budgetExhausted: boolean;
+  readonly timestamp: number;
+}
+
+/* Worker Messages */
+
+export type GeometryWorkerRequest =
+  | GenerateGeometryWorkerRequest
+  | CancelGeometryWorkerRequest
+  | PingGeometryWorkerRequest;
+
+export interface GenerateGeometryWorkerRequest {
+  readonly type: 'generate-geometry';
+  readonly request: GeometryRequest;
+}
+
+export interface CancelGeometryWorkerRequest {
+  readonly type: 'cancel-geometry';
+  readonly jobId: string;
+  readonly reason?: string;
+}
+
+export interface PingGeometryWorkerRequest {
+  readonly type: 'ping';
+}
+
+export type GeometryWorkerResponse =
+  | GeometryResultResponse
+  | GeometryProgressResponse
+  | GeometryCancelledResponse
+  | GeometryErrorResponse
+  | GeometryPongResponse;
+
+export interface GeometryResultResponse {
+  readonly type: 'geometry-result';
+  readonly result: GeometryResult;
+}
+
+export interface GeometryProgressResponse {
+  readonly type: 'geometry-progress';
+  readonly jobId: string;
+  readonly stage: 'surface-f' | 'surface-g' | 'curve' | 'complete';
+  readonly progress: number; // 0.0 to 1.0
+}
+
+export interface GeometryCancelledResponse {
+  readonly type: 'geometry-cancelled';
+  readonly jobId: string;
+  readonly reason?: string;
+}
+
+export interface GeometryErrorResponse {
+  readonly type: 'geometry-error';
+  readonly jobId: string;
+  readonly message: string;
+  readonly details?: string;
+}
+
+export interface GeometryPongResponse {
+  readonly type: 'pong';
+}
+
+/**
+ * Helper to construct an empty/failed mesh buffer.
+ */
+export function createEmptyMeshBuffer(
+  status: GeometryStatus,
+  diagnostics: Partial<MeshDiagnostics> = {},
+): MeshGeometryBuffer {
+  return {
+    status,
+    positions: new Float32Array(0),
+    normals: new Float32Array(0),
+    indices: new Uint32Array(0),
+    vertexCount: 0,
+    triangleCount: 0,
+    boundingBox: null,
+    diagnostics: {
+      evalCount: diagnostics.evalCount ?? 0,
+      cellsProcessed: diagnostics.cellsProcessed ?? 0,
+      poleDiscardedCount: diagnostics.poleDiscardedCount ?? 0,
+      durationMs: diagnostics.durationMs ?? 0,
+      message: diagnostics.message,
+      approxResidualError: diagnostics.approxResidualError,
+    },
+  };
+}
+
+/**
+ * Helper to construct an empty/failed curve buffer.
+ */
+export function createEmptyCurveBuffer(
+  status: GeometryStatus,
+  orientation: TraversalDirection = 'forward',
+  diagnostics: Partial<CurveDiagnostics> = {},
+): CurveGeometryBuffer {
+  return {
+    status,
+    positions: new Float32Array(0),
+    tValues: new Float64Array(0),
+    segmentBreaks: new Uint32Array(0),
+    sampleCount: 0,
+    segmentCount: 0,
+    boundingBox: null,
+    traversalOrientation: orientation,
+    isClosed: false,
+    isPeriodic: false,
+    diagnostics: {
+      subdivisions: diagnostics.subdivisions ?? 0,
+      clippedSegments: diagnostics.clippedSegments ?? 0,
+      durationMs: diagnostics.durationMs ?? 0,
+      message: diagnostics.message,
+    },
+  };
+}
