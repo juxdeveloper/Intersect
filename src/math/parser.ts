@@ -170,3 +170,328 @@ const ALLOWED_OPERATORS: Record<string, string> = {
 export interface ParseMathInputOptions {
   readonly allowedParam?: string;
 }
+
+/**
+ * Parses user input LaTeX or math notation into an ExpressionNode AST.
+ */
+export function parseMathInput(
+  rawInput: string,
+  surface: 'surfaceF' | 'surfaceG',
+  options?: ParseMathInputOptions,
+): ParseResult {
+  // 1. Initial size checks
+  const sizeError = checkInputSize(rawInput, surface);
+  if (sizeError) {
+    return { success: false, diagnostic: sizeError };
+  }
+
+  // 2. Parse with ComputeEngine using 'raw' form and 'rational' numbers to avoid canonical loss
+  let boxedExpr;
+  try {
+    boxedExpr = ce.parse(rawInput, {
+      form: 'raw',
+      parseNumbers: 'rational',
+      strict: false,
+    });
+  } catch (err) {
+    return {
+      success: false,
+      diagnostic: {
+        surface,
+        reasonCode: 'internal_adapter_error',
+        message: `Parser internal error: ${err instanceof Error ? err.message : String(err)}`,
+        rawInput,
+      },
+    };
+  }
+
+  // 3. Inspect parser diagnostics and error nodes
+  if (boxedExpr.errors && boxedExpr.errors.length > 0) {
+    const firstErr = boxedExpr.errors[0];
+    const sourceOffsets = firstErr?.sourceOffsets
+      ? ([firstErr.sourceOffsets[0], firstErr.sourceOffsets[1]] as const)
+      : undefined;
+
+    // Check error kind
+    const errJson = firstErr?.json;
+    let reasonCode: DiagnosticReasonCode = 'parse_error';
+    let message = 'Could not parse mathematical expression.';
+
+    if (Array.isArray(errJson) && errJson.length > 1) {
+      const code = String(errJson[1]).replace(/'/g, '');
+      if (code === 'missing') {
+        reasonCode = 'incomplete_placeholder';
+        message = 'Incomplete mathematical expression (missing argument, exponent, or operand).';
+      } else if (code === 'unexpected-operator') {
+        reasonCode = 'parse_error';
+        message = 'Syntax error: unexpected operator or missing operand.';
+      } else if (code === 'unexpected-command') {
+        reasonCode = 'unsupported_function';
+        message = 'Unsupported LaTeX command or unrecognized function.';
+      }
+    }
+
+    return {
+      success: false,
+      diagnostic: {
+        surface,
+        reasonCode,
+        message,
+        rawInput,
+        sourceOffsets,
+      },
+    };
+  }
+
+  const rawJson = boxedExpr.json;
+  if (rawJson === 'Nothing' || rawJson === null || rawJson === undefined) {
+    return {
+      success: false,
+      diagnostic: {
+        surface,
+        reasonCode: 'empty_input',
+        message: `${surface === 'surfaceF' ? 'Surface F' : 'Surface G'} equation cannot be empty.`,
+        rawInput,
+      },
+    };
+  }
+
+  // 4. Recursive conversion from MathJSON to project ExpressionNode AST
+  function convertNode(json: unknown): { node?: ExpressionNode; diagnostic?: EquationDiagnostic } {
+    // A. Check for error nodes embedded in tree
+    if (Array.isArray(json) && json[0] === 'Error') {
+      const code = json[1] ? String(json[1]).replace(/'/g, '') : '';
+      let reasonCode: DiagnosticReasonCode = 'parse_error';
+      let message = 'Syntax error in mathematical input.';
+      if (code === 'missing') {
+        reasonCode = 'incomplete_placeholder';
+        message = 'Incomplete mathematical expression (missing operand or argument).';
+      } else if (code === 'unexpected-command') {
+        reasonCode = 'unsupported_function';
+        message = 'Unsupported LaTeX command or function.';
+      }
+      return {
+        diagnostic: {
+          surface,
+          reasonCode,
+          message,
+          rawInput,
+        },
+      };
+    }
+
+    // B. Numbers and exact rationals
+    const rational = extractExactRationalFromMathJson(json);
+    if (rational !== null) {
+      const numVal = Number(rational.num) / Number(rational.den);
+      const exactText =
+        rational.den === '1' ? rational.num : `${rational.num}/${rational.den}`;
+      return { node: createNumberNode(numVal, exactText, rational) };
+    }
+
+    // C. Symbols
+    if (typeof json === 'string') {
+      const { normalized, isConstant, isReserved, isValid } = normalizeSymbolName(
+        json,
+        options?.allowedParam,
+      );
+      if (isReserved) {
+        return {
+          diagnostic: {
+            surface,
+            reasonCode: 'reserved_symbol',
+            message: `Symbol 't' is reserved for curve parameterization in future phases. Surface equations must be defined in real variables x, y, z.`,
+            rawInput,
+          },
+        };
+      }
+      if (!isValid) {
+        return {
+          diagnostic: {
+            surface,
+            reasonCode: 'unknown_symbol',
+            message: `Unknown symbol or unresolved parameter '${json}'. Valid surface variables are x, y, z and constants pi, e.`,
+            rawInput,
+          },
+        };
+      }
+      return { node: createSymbolNode(normalized, isConstant) };
+    }
+
+    // D. Function application / compound operators
+    if (Array.isArray(json)) {
+      if (json.length === 0) {
+        return {
+          diagnostic: {
+            surface,
+            reasonCode: 'parse_error',
+            message: 'Empty operator node in parsed tree.',
+            rawInput,
+          },
+        };
+      }
+
+      const op = String(json[0]);
+
+      // Unpack Delimiter grouping parentheses (e.g. ["Delimiter", expr])
+      if (op === 'Delimiter') {
+        if (json.length < 2) {
+          return {
+            diagnostic: {
+              surface,
+              reasonCode: 'incomplete_placeholder',
+              message: 'Empty parentheses or bracket grouping.',
+              rawInput,
+            },
+          };
+        }
+        return convertNode(json[1]);
+      }
+
+      // Relations
+      if (op === 'Equal') {
+        if (json.length !== 3) {
+          return {
+            diagnostic: {
+              surface,
+              reasonCode: 'malformed_equality',
+              message: 'Malformed equality: expected exactly two sides around equal sign.',
+              rawInput,
+            },
+          };
+        }
+        const lhsRes = convertNode(json[1]);
+        if (lhsRes.diagnostic) return lhsRes;
+        const rhsRes = convertNode(json[2]);
+        if (rhsRes.diagnostic) return rhsRes;
+
+        return { node: createRelationNode('=', lhsRes.node!, rhsRes.node!) };
+      }
+
+      // Reject inequalities as surface relations
+      if (
+        op === 'Less' ||
+        op === 'LessEqual' ||
+        op === 'Greater' ||
+        op === 'GreaterEqual' ||
+        op === 'NotEqual'
+      ) {
+        return {
+          diagnostic: {
+            surface,
+            reasonCode: 'inequality_not_supported',
+            message: `Inequalities (e.g. '<', '<=', '>', '>=') are not supported for surface equations. Surfaces must be defined by an equality relation '=' or standalone expression.`,
+            rawInput,
+          },
+        };
+      }
+
+      // Check allowlisted operators
+      const standardOp = ALLOWED_OPERATORS[op];
+      if (!standardOp) {
+        // Specific diagnostic for known calculus / discrete constructs
+        const unsupportedConstructs: Record<string, string> = {
+          Integrate: 'Integrals are not supported in surface equations.',
+          Sum: 'Series and summation (\\sum) are not supported in surface equations.',
+          Product: 'Products (\\prod) are not supported in surface equations.',
+          Limit: 'Limits (\\lim) are not supported in surface equations.',
+          Derivative: 'Derivatives are not supported in surface equations.',
+          Differential: 'Differentials are not supported in surface equations.',
+          Matrix: 'Matrices and vectors are not supported in surface equations.',
+          List: 'Lists or bracketed arrays are not supported in surface equations.',
+          Set: 'Set notation is not supported in surface equations.',
+          Tuple: 'Tuples or sequences are not supported in surface equations.',
+          Sequence: 'Comma-separated sequences are not supported in surface equations.',
+          Piecewise: 'Piecewise surface equations are not supported in V2.',
+          Factorial: 'Factorials are not supported in surface equations.',
+        };
+
+        const explanation =
+          unsupportedConstructs[op] ??
+          `Unsupported mathematical function or operator '${op}'. Supported functions: +, -, *, /, powers, sqrt, trig, inverse trig, hyperbolic, exp, ln, abs.`;
+
+        return {
+          diagnostic: {
+            surface,
+            reasonCode: unsupportedConstructs[op] ? 'unsupported_construct' : 'unsupported_operator',
+            message: explanation,
+            rawInput,
+          },
+        };
+      }
+
+      // Convert child arguments
+      const childNodes: ExpressionNode[] = [];
+      for (let i = 1; i < json.length; i++) {
+        const childRes = convertNode(json[i]);
+        if (childRes.diagnostic) return childRes;
+        childNodes.push(childRes.node!);
+      }
+
+      return { node: createOperatorNode(standardOp, childNodes) };
+    }
+
+    return {
+      diagnostic: {
+        surface,
+        reasonCode: 'parse_error',
+        message: `Unrecognized AST node structure: ${typeof json}`,
+        rawInput,
+      },
+    };
+  }
+
+  const converted = convertNode(rawJson);
+  if (converted.diagnostic) {
+    return { success: false, diagnostic: converted.diagnostic };
+  }
+
+  const ast = converted.node!;
+
+  // 5. Complexity verification
+  const depth = measureTreeDepth(ast);
+  if (depth > MAX_TREE_DEPTH) {
+    return {
+      success: false,
+      diagnostic: {
+        surface,
+        reasonCode: 'excessive_depth',
+        message: `Expression nesting depth (${depth}) exceeds safety limit of ${MAX_TREE_DEPTH} levels.`,
+        rawInput,
+      },
+    };
+  }
+
+  const nodeCount = countNodes(ast);
+  if (nodeCount > MAX_NODE_COUNT) {
+    return {
+      success: false,
+      diagnostic: {
+        surface,
+        reasonCode: 'excessive_depth',
+        message: `Expression node count (${nodeCount}) exceeds safety limit of ${MAX_NODE_COUNT} nodes.`,
+        rawInput,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    ast,
+    rawInput,
+  };
+}
+
+/**
+ * Parses a parameter-dependent curve coordinate expression (e.g. "2 cos t", "t^2", "sin(2*pi*t)").
+ */
+export function parseCurveExpression(
+  rawInput: string,
+  paramSymbol = 't',
+): { success: true; ast: ExpressionNode } | { success: false; error: string } {
+  const res = parseMathInput(rawInput, 'surfaceF', { allowedParam: paramSymbol });
+  if (res.success) {
+    return { success: true, ast: res.ast };
+  }
+  return { success: false, error: res.diagnostic.message };
+}
