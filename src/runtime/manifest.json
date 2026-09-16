@@ -1,0 +1,42 @@
+{
+  "manifestVersion": "1.0.0",
+  "createdAt": "2026-10-03T15:31:14.096Z",
+  "versions": {
+    "pyodideVersion": "0.27.8",
+    "pythonVersion": "3.12.7",
+    "sympyVersion": "1.13.3",
+    "mpmathVersion": "1.3.0"
+  },
+  "totalBytes": 18403026,
+  "totalFormattedSize": "17.55 MB",
+  "files": {
+    "pyodide.asm.js": {
+      "size": 1255688,
+      "sha256": "8bd8175d6b97ee4ffff85c5aaf44130fad3e9322939826f2a52d27d786ef8908"
+    },
+    "pyodide.asm.wasm": {
+      "size": 10105545,
+      "sha256": "92160102d09feeb8c738a07c870bde47fd4c141fd70b5376188bdd951df9ea23"
+    },
+    "python_stdlib.zip": {
+      "size": 2360738,
+      "sha256": "cb5f8d7eae384fcf27c574d8b13901de1753a50f93038130c326f85b88c9012b"
+    },
+    "pyodide-lock.json": {
+      "size": 129150,
+      "sha256": "cb18729b18db7ce2482d196209c8051d8122441b817fc2f644d643b44e5e1b0f"
+    },
+    "pyodide.mjs": {
+      "size": 13931,
+      "sha256": "0119dc60b71b676b53d61ef63f8847973f845d2c8cf2eee32a61773ed8b5b01e"
+    },
+    "mpmath-1.3.0-py3-none-any.whl": {
+      "size": 418000,
+      "sha256": "5c8b3c27ea61c54b90c56a5adf9ddb07d7c3591b80e9f83d4f03009bba6f5ac5"
+    },
+    "sympy-1.13.3-py3-none-any.whl": {
+      "size": 4119974,
+      "sha256": "f36c07ec53e3992f8d02ea833e4e277c51138791f07b508677dd37ef5c2965dd"
+    }
+  }
+}
