@@ -88,3 +88,103 @@ export function reverseInterval(
     interval.minInclusive,
   );
 }
+
+/**
+ * Reverses an entire parameter domain coherently.
+ *
+ * For a union of intervals I_1 < I_2 < ... < I_k:
+ * In increasing reverse parameter u, the curve must traverse in reverse spatial order.
+ * Since t = -u maps higher t to lower u, the transformed segments must be ordered
+ * such that increasing u traverses the segments in reverse order: -I_k, -I_{k-1}, ..., -I_1.
+ */
+export function reverseDomain(
+  domain: ParameterDomain,
+  preferReflectionForSingleFinite: boolean = true,
+): { domain: ParameterDomain; policyUsed: ReversalPolicy } {
+  if (domain.intervals.length === 0) {
+    return {
+      domain: { intervals: [], description: 'Empty domain' },
+      policyUsed: 'uniform_negation',
+    };
+  }
+
+  // Check if single finite interval
+  const isSingleFinite =
+    domain.intervals.length === 1 &&
+    domain.intervals[0]!.min.kind === 'finite' &&
+    domain.intervals[0]!.max.kind === 'finite';
+
+  if (isSingleFinite && preferReflectionForSingleFinite) {
+    const orig = domain.intervals[0]!;
+    const reversed = reverseInterval(orig, 'finite_reflection');
+    return {
+      domain: {
+        intervals: [reversed],
+        description: domain.description ? `Reversed: ${domain.description}` : undefined,
+      },
+      policyUsed: 'finite_reflection',
+    };
+  }
+
+  // Uniform negation for unions or infinite intervals
+  // Reverse segment order: last segment becomes first
+  const transformedIntervals: ParameterInterval[] = [];
+  for (let i = domain.intervals.length - 1; i >= 0; i--) {
+    const inv = domain.intervals[i]!;
+    transformedIntervals.push(reverseInterval(inv, 'uniform_negation'));
+  }
+
+  return {
+    domain: {
+      intervals: transformedIntervals,
+      description: domain.description ? `Reversed: ${domain.description}` : undefined,
+    },
+    policyUsed: 'uniform_negation',
+  };
+}
+
+/**
+ * Creates traversal metadata for downstream V6 geometry generation and V9 animation.
+ */
+export function createTraversalMetadata(options: {
+  orientation: TraversalDirection;
+  policyUsed: 'identity' | 'finite_reflection' | 'uniform_negation';
+  domain: ParameterDomain;
+  isClosed?: boolean;
+  isPeriodic?: boolean;
+  period?: string;
+  reflectionFormula?: string;
+}): CurveTraversalMetadata {
+  const { orientation, policyUsed, domain, isClosed, isPeriodic, period } = options;
+
+  let formula = 't = t';
+  if (orientation === 'reverse') {
+    if (policyUsed === 'finite_reflection') {
+      formula = options.reflectionFormula ?? 't = a + b - u';
+    } else {
+      formula = 't = -u';
+    }
+  }
+
+  const hasInfinite = domain.intervals.some(
+    (iv) => iv.min.kind === 'infinite' || iv.max.kind === 'infinite',
+  );
+
+  return {
+    orientation,
+    parameterMapping: {
+      type: policyUsed,
+      formula,
+      canonicalParam: 't',
+      orientedParam: orientation === 'forward' ? 't' : 't',
+    },
+    isClosed: Boolean(isClosed),
+    isPeriodic: Boolean(isPeriodic),
+    period,
+    segmentCount: domain.intervals.length,
+    disjointGapsPreserved: domain.intervals.length > 1,
+    infiniteDomainNote: hasInfinite
+      ? 'Parameter domain is unbounded. Display traversal in V6/V9 will use a bounded calculation window as a rendering choice.'
+      : undefined,
+  };
+}
