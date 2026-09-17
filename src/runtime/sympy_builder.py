@@ -1839,3 +1839,292 @@ def reduce_quadrics(F_res, G_res, bounds, direction='forward', f_eq_str=None, g_
     except Exception:
         pass
     return None
+
+
+def solve_coordinate_parameterization(F_res, G_res, domain_conds=None, bounds=DEFAULT_BOUNDS, direction='forward', f_eq_str=None, g_eq_str=None):
+    if domain_conds is None:
+        domain_conds = []
+
+    candidates = []
+    has_incomplete_branches = False
+    is_closed = is_closed_variety_check(F_res, G_res)
+
+    for u, remaining in [(x, (y, z)), (y, (x, z)), (z, (x, y))]:
+        v, w = remaining
+        F_sub = F_res.subs(u, t)
+        G_sub = G_res.subs(u, t)
+
+        try:
+            sols = sp.solve([F_sub, G_sub], [v, w], dict=True)
+        except Exception:
+            continue
+
+        real_sols = []
+        for sol in sols:
+            v_expr = sol.get(v)
+            w_expr = sol.get(w)
+            if v_expr is None or w_expr is None:
+                continue
+            if (v_expr.free_symbols - {t}) or (w_expr.free_symbols - {t}):
+                continue
+            if v_expr.has(sp.I) or w_expr.has(sp.I):
+                continue
+            real_sols.append((v_expr, w_expr))
+
+        multiple_branches_for_u = len(real_sols) > 1
+
+        for v_expr, w_expr in real_sols:
+            coord_map = {u: t, v: v_expr, w: w_expr}
+            rx, ry, rz = coord_map[x], coord_map[y], coord_map[z]
+
+            # Phase 4: Determine exact parameter domain (Rule 2)
+            intervals, domain_desc = determine_parameter_domain(
+                rx, ry, rz, is_periodic=False, domain_conds=domain_conds, bounds=bounds
+            )
+            if not intervals:
+                continue
+
+            # Phase 5: Symbolic validation (Rule 1)
+            if not validate_symbolic_identities(rx, ry, rz, F_res, G_res, intervals):
+                continue
+
+            # Phase 6: Global coverage validation (Rules 3, 4, 7, 8)
+            cand_obj = {
+                'x': rx,
+                'y': ry,
+                'z': rz,
+                'domain': {'intervals': intervals},
+                'strategy': 'coordinate',
+                'has_discarded_conjugate_branches': multiple_branches_for_u,
+            }
+
+            is_cov, cov_reason = validate_global_coverage(cand_obj, F_res, G_res, bounds=bounds, is_closed_curve=is_closed)
+            if not is_cov:
+                has_incomplete_branches = True
+                continue
+
+            scope = "Verified complete intersection curve component within calculation bounds"
+
+            score = 500
+            if u == x: score += 50
+            elif u == y: score += 30
+            ops = sp.count_ops(rx) + sp.count_ops(ry) + sp.count_ops(rz)
+            score -= ops
+
+            inv_summary = ', '.join(f"[{iv['min']['exact']}, {iv['max']['exact']}]" for iv in intervals)
+            derivation = {
+                'strategyName': f'Coordinate Parameterization ({u} = t)',
+                'steps': [
+                    {
+                        'stepNumber': 1,
+                        'title': f'State equations and assign spatial coordinate {u} = t',
+                        'formulaText': f"{u}(t) = t",
+                        'formulaLatex': f"{u}(t) = t",
+                        'explanation': f'Selected spatial coordinate {u} as the curve parameter variable t.',
+                    },
+                    {
+                        'stepNumber': 2,
+                        'title': f'Solve remaining coordinates in terms of parameter t',
+                        'formulaText': f"{v}(t) = {v_expr},  {w}(t) = {w_expr}",
+                        'formulaLatex': f"{v}(t) = {sp.latex(v_expr)}, \\quad {w}(t) = {sp.latex(w_expr)}",
+                        'explanation': 'Algebraically solved the system for remaining coordinates.',
+                    },
+                    {
+                        'stepNumber': 3,
+                        'title': 'Establish parameter domain and calculation bounds',
+                        'formulaText': f"Valid domain: {inv_summary}",
+                        'formulaLatex': f"D = \\bigcup \\, {inv_summary}",
+                        'explanation': 'Enforcing calculation bounds [-1000, 1000]^3 and excluding any algebraic singularities or non-real intervals.',
+                    },
+                    {
+                        'stepNumber': 4,
+                        'title': 'Verify algebraic surface membership',
+                        'formulaText': 'F(r(t)) = 0 and G(r(t)) = 0 identically',
+                        'formulaLatex': 'F(\\mathbf{r}(t)) = 0 \\quad\\text{and}\\quad G(\\mathbf{r}(t)) = 0 \\quad \\forall t \\in D',
+                        'explanation': 'Both original surface equations are verified algebraically to simplify identically to zero.',
+                    },
+                    {
+                        'stepNumber': 5,
+                        'title': 'Verify global coverage',
+                        'formulaText': cov_reason,
+                        'formulaLatex': f"\\text{{{cov_reason}}}",
+                        'explanation': 'Verified complete global coverage without branch omission or sign-constrained loss.',
+                    },
+                    {
+                        'stepNumber': 6,
+                        'title': 'Result scope and component coverage',
+                        'formulaText': scope,
+                        'formulaLatex': f"\\text{{{scope}}}",
+                        'explanation': f'Established result coverage: {scope}.',
+                    }
+                ]
+            }
+
+            canonical_curve = {
+                'paramSymbol': 't',
+                'x': str(rx),
+                'y': str(ry),
+                'z': str(rz),
+                'latex': {
+                    'x': sp.latex(rx),
+                    'y': sp.latex(ry),
+                    'z': sp.latex(rz),
+                },
+                'domain': {
+                    'intervals': intervals,
+                    'description': domain_desc or 'Valid parameter intervals'
+                },
+                'direction': 'forward',
+                'verification': {
+                    'status': 'verified',
+                    'scope': f'Algebraically verified {scope}.',
+                    'surfaceFIdentityHolds': True,
+                    'surfaceGIdentityHolds': True,
+                    'domainSingularitiesChecked': True,
+                    'method': 'symbolic_identity',
+                    'verifiedAt': 1700000000000
+                }
+            }
+
+            candidates.append({
+                'score': score,
+                'canonicalCurve': canonical_curve,
+                'derivation': derivation,
+                'scope': scope,
+            })
+
+    if not candidates:
+        return None, has_incomplete_branches
+
+    candidates.sort(key=lambda c: (-c['score'], str(c['canonicalCurve']['x'])))
+    best = candidates[0]
+    best_scope = best['scope']
+    if len(candidates) > 1:
+        best_scope = f"Verified component (1 of {len(candidates)} candidates); additional components may exist"
+
+    wrapped = wrap_solved_curve(
+        best['canonicalCurve'],
+        best['derivation'],
+        F_res,
+        G_res,
+        bounds,
+        direction,
+        best_scope,
+        len(candidates)
+    )
+    return wrapped, False
+
+
+def solve_intersection_core(F_res, G_res, domain_conds=None, bounds=DEFAULT_BOUNDS, direction='forward', f_eq_str=None, g_eq_str=None):
+    bounds = normalize_bounds(bounds)
+    # Strategy 0: Trivial contradiction / emptiness / degeneracy
+    res0 = check_trivial_emptiness_or_degeneracy(F_res, G_res, bounds)
+    if res0:
+        return res0
+
+    # Strategy 1: Linear affine system
+    res1 = solve_linear(F_res, G_res, bounds, domain_conds, direction, f_eq_str, g_eq_str)
+    if res1:
+        return res1
+
+    # Strategy 2: Plane + Sphere
+    res2 = solve_plane_sphere_system(F_res, G_res, bounds, direction, f_eq_str, g_eq_str)
+    if res2:
+        return res2
+
+    # Strategy 3: Cylinder + Surface (Plane or general surface)
+    res3 = solve_cylinder_surface_system(F_res, G_res, bounds, domain_conds, direction, f_eq_str, g_eq_str)
+    if res3:
+        return res3
+
+    # Strategy 4: Quadric-Quadric Reduction (e.g. Sphere + Sphere)
+    res4 = reduce_quadrics(F_res, G_res, bounds, direction, f_eq_str, g_eq_str)
+    if res4:
+        return res4
+
+    # Strategy 5: Coordinate Parameterization
+    res5, has_incomplete = solve_coordinate_parameterization(F_res, G_res, domain_conds, bounds, direction, f_eq_str, g_eq_str)
+    if res5:
+        return res5
+
+    # If branches exist but no single exact global parameterization covers all components (Rule 8)
+    if has_incomplete:
+        return {
+            'status': 'inconclusive',
+            'bounds': bounds,
+            'reasonCode': 'multiple_branches_no_global_parametrization',
+            'message': 'The complete intersection consists of multiple branches or disconnected components, and no single exact global parameterization could be determined.',
+            'searchDetails': 'Rejected candidate parameterizations that only covered a single branch or subset of the complete intersection.'
+        }
+
+    # Inconclusive fallback
+    return {
+        'status': 'inconclusive',
+        'bounds': bounds,
+        'reasonCode': 'search_exhausted',
+        'message': 'Could not determine an exact parameterization within the supported symbolic strategies.',
+        'searchDetails': 'Strategies attempted: Linear, PlaneSphere, CylinderSurface, QuadricReduction, CoordinateParameter.'
+    }
+
+
+def solve_intersection_json(json_str):
+    """
+    Main entry point for exact intersection solving (Phase V4 & V5).
+    Accepts JSON with surface plans, bounds, and direction ('forward' | 'reverse').
+    Returns JSON serialized CalculationResult.
+    """
+    data = json.loads(json_str)
+
+    def extract_plan(obj):
+        if not obj or not isinstance(obj, dict):
+            return obj
+        if 'equation' in obj and 'planVersion' in obj:
+            return obj
+        if 'sympyPlan' in obj:
+            return obj['sympyPlan']
+        if 'prepared' in obj and isinstance(obj['prepared'], dict):
+            prep = obj['prepared']
+            if 'sympyPlan' in prep:
+                return prep['sympyPlan']
+        return obj
+
+    plan_f = extract_plan(data.get('surfaceF'))
+    plan_g = extract_plan(data.get('surfaceG'))
+    bounds = normalize_bounds(data.get('bounds', DEFAULT_BOUNDS))
+    direction = data.get('direction', 'forward')
+    if direction not in ('forward', 'reverse'):
+        direction = 'forward'
+
+    if not plan_f or not plan_g:
+        raise ValueError("Payload must contain both 'surfaceF' and 'surfaceG' plans")
+
+    eq_f = plan_f.get('equation')
+    if not eq_f or eq_f.get('op') != 'Eq':
+        raise ValueError("surfaceF missing valid Eq relation")
+    lhs_f = build_step(eq_f['args'][0])
+    rhs_f = build_step(eq_f['args'][1])
+    f_res = lhs_f - rhs_f
+    f_eq_str = plan_f.get('rawInput') or f"{lhs_f} = {rhs_f}"
+
+    eq_g = plan_g.get('equation')
+    if not eq_g or eq_g.get('op') != 'Eq':
+        raise ValueError("surfaceG missing valid Eq relation")
+    lhs_g = build_step(eq_g['args'][0])
+    rhs_g = build_step(eq_g['args'][1])
+    g_res = lhs_g - rhs_g
+    g_eq_str = plan_g.get('rawInput') or f"{lhs_g} = {rhs_g}"
+
+    domain_conds = []
+    for plan in (plan_f, plan_g):
+        for cond in plan.get('domainConditions', []):
+            c_step = cond.get('condition')
+            if c_step:
+                domain_conds.append({
+                    'id': cond.get('id', ''),
+                    'kind': cond.get('kind', ''),
+                    'expr': build_step(c_step),
+                    'description': cond.get('description', '')
+                })
+
+    result = solve_intersection_core(f_res, g_res, domain_conds, bounds, direction, f_eq_str, g_eq_str)
+    return json.dumps(result)
