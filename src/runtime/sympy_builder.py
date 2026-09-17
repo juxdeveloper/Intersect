@@ -317,3 +317,376 @@ def make_interval(min_ep, min_inc, max_ep, max_inc):
         'max': max_ep,
         'maxInclusive': max_inc if max_ep['kind'] == 'finite' else False,
     }
+
+
+def is_sum_of_squares_positive(expr):
+    """
+    Checks if an expression is of the form sum(c_i * (x_i - p_i)^2) + K
+    with c_i > 0 and K > 0 in real variables, which proves real emptiness.
+    Returns (True, K, parts) or ('zero', 0, parts) or (False, None, None).
+    """
+    try:
+        expr_exp = sp.expand(expr)
+        free = [s for s in expr_exp.free_symbols if s in {x, y, z}]
+        if not free:
+            if expr_exp.is_number and expr_exp > 0:
+                return True, expr_exp, []
+            return False, None, None
+
+        if not expr_exp.is_polynomial(*free):
+            return False, None, None
+
+        for i in range(len(free)):
+            for j in range(i + 1, len(free)):
+                if expr_exp.coeff(free[i] * free[j]) != 0:
+                    return False, None, None
+
+        parts = []
+        c0 = expr_exp.subs([(v, 0) for v in free])
+        sum_subtracted = sp.Integer(0)
+        for var in free:
+            a = expr_exp.coeff(var, 2)
+            b = expr_exp.coeff(var, 1)
+            if a <= 0:
+                return False, None, None
+            p = -sp.Rational(b, 2*a) if isinstance(b, sp.Integer) and isinstance(a, sp.Integer) else -b / (2*a)
+            parts.append((a, var, p))
+            sum_subtracted += a * p**2
+
+        const_term = sp.simplify(c0 - sum_subtracted)
+        if const_term.is_number and const_term > 0:
+            return True, const_term, parts
+        elif const_term.is_number and const_term == 0:
+            return 'zero', const_term, parts
+    except Exception:
+        pass
+    return False, None, None
+
+
+def check_trivial_emptiness_or_degeneracy(F_res, G_res, bounds):
+    """
+    Detects constant contradictions, constant identities, and sum of squares contradictions.
+    """
+    if F_res.is_number and F_res != 0:
+        return {
+            'status': 'empty-bounded',
+            'bounds': bounds,
+            'reasonCode': 'algebraic_contradiction',
+            'proofScope': 'global',
+            'proofExplanation': f'Proved no real intersection exists globally in R^3: Surface F equation is an algebraic contradiction ({F_res} = 0).'
+        }
+    if G_res.is_number and G_res != 0:
+        return {
+            'status': 'empty-bounded',
+            'bounds': bounds,
+            'reasonCode': 'algebraic_contradiction',
+            'proofScope': 'global',
+            'proofExplanation': f'Proved no real intersection exists globally in R^3: Surface G equation is an algebraic contradiction ({G_res} = 0).'
+        }
+
+    if F_res == 0 and G_res == 0:
+        return {
+            'status': 'degenerate',
+            'nature': 'coincident-surfaces',
+            'message': 'Both equations are constant identities; intersection is all of space.',
+            'explanation': 'Both surfaces are identically satisfied everywhere; intersection is three-dimensional space.'
+        }
+
+    # Sum of squares strictly positive
+    is_pos_f, k_f, _ = is_sum_of_squares_positive(F_res)
+    if is_pos_f is True:
+        return {
+            'status': 'empty-bounded',
+            'bounds': bounds,
+            'reasonCode': 'sum_of_squares_positive',
+            'proofScope': 'global',
+            'proofExplanation': 'Proved no real intersection exists globally in R^3: Surface F requires a sum of real squares to equal a negative number, having no real solutions.'
+        }
+    is_pos_g, k_g, _ = is_sum_of_squares_positive(G_res)
+    if is_pos_g is True:
+        return {
+            'status': 'empty-bounded',
+            'bounds': bounds,
+            'reasonCode': 'sum_of_squares_positive',
+            'proofScope': 'global',
+            'proofExplanation': 'Proved no real intersection exists globally in R^3: Surface G requires a sum of real squares to equal a negative number, having no real solutions.'
+        }
+
+    return None
+
+
+def test_identity_numerically(expr, intervals=None):
+    """
+    Numerically tests whether expr evaluates to zero at multiple interior points
+    within the parameter domain intervals. Used as a safe fallback when purely
+    symbolic algebraic simplification does not reduce transcendental compositions.
+    """
+    try:
+        test_pts = []
+        if intervals:
+            for iv in intervals[:3]:
+                min_n = safe_numeric_approx(sp.sympify(iv['min']['exact'], locals=ALLOWED_SYMBOLS)) if iv['min']['kind'] == 'finite' else -10.0
+                max_n = safe_numeric_approx(sp.sympify(iv['max']['exact'], locals=ALLOWED_SYMBOLS)) if iv['max']['kind'] == 'finite' else 10.0
+                if min_n is not None and max_n is not None:
+                    span = max_n - min_n
+                    test_pts.extend([min_n + span * 0.15, min_n + span * 0.42, min_n + span * 0.73, min_n + span * 0.88])
+        if not test_pts:
+            test_pts = [0.15, 0.42, 1.25, 2.71, -0.63]
+        for pt in test_pts:
+            val = expr.subs(t, pt).evalf()
+            if abs(complex(val)) > 1e-6:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def is_closed_variety_check(F_res, G_res):
+    """
+    Detects whether the algebraic variety contains a closed loop component,
+    such as when either surface is an elliptic/circular cylinder or a sphere,
+    or when eliminating a variable yields an elliptic cylinder.
+    """
+    if is_sphere_check(F_res)[0] or is_sphere_check(G_res)[0]:
+        return True
+    if is_cylinder_check(F_res)[0] or is_cylinder_check(G_res)[0]:
+        return True
+    for v in (x, y, z):
+        if F_res.is_polynomial(v) and sp.degree(F_res, v) == 1:
+            try:
+                v_sol = sp.solve(F_res, v)[0]
+                G_elim = G_res.subs(v, v_sol)
+                if is_cylinder_check(G_elim)[0] or is_sphere_check(G_elim)[0]:
+                    return True
+            except Exception:
+                pass
+        if G_res.is_polynomial(v) and sp.degree(G_res, v) == 1:
+            try:
+                v_sol = sp.solve(G_res, v)[0]
+                F_elim = F_res.subs(v, v_sol)
+                if is_cylinder_check(F_elim)[0] or is_sphere_check(F_elim)[0]:
+                    return True
+            except Exception:
+                pass
+    return False
+
+
+def determine_parameter_domain(rx, ry, rz, is_periodic=False, domain_conds=None, bounds=DEFAULT_BOUNDS):
+    """
+    Phase 4: Exact Parameter Domain Determination (Rule 2).
+    Calculates the true real parameter domain D of t.
+    Considers even-root radicands (rad >= 0), denominators (den != 0),
+    logarithms (arg > 0), inverse trig restrictions, and calculation bounds.
+    Never defaults blindly to R.
+    For periodic closed curves, returns the fundamental period [0, 2*pi) (Rule 6).
+    """
+    if domain_conds is None:
+        domain_conds = []
+    bounds = normalize_bounds(bounds)
+    b_min_x, b_max_x, b_min_y, b_max_y, b_min_z, b_max_z = bounds
+
+    if is_periodic:
+        # Periodic curve: fundamental period [0, 2*pi)
+        forbidden_pts = set()
+        for expr in (rx, ry, rz):
+            for part in expr.atoms(sp.Pow):
+                if part.exp.is_negative:
+                    try:
+                        roots = sp.solve(part.base, t)
+                        for r_ in roots:
+                            if r_.is_real:
+                                r_num = safe_numeric_approx(r_)
+                                if r_num is not None and 0 <= r_num < 2 * math.pi:
+                                    forbidden_pts.add(r_)
+                    except Exception:
+                        pass
+            frac_den = sp.fraction(expr)[1]
+            if frac_den != 1:
+                try:
+                    roots = sp.solve(frac_den, t)
+                    for r_ in roots:
+                        if r_.is_real:
+                            r_num = safe_numeric_approx(r_)
+                            if r_num is not None and 0 <= r_num < 2 * math.pi:
+                                forbidden_pts.add(r_)
+                except Exception:
+                    pass
+
+        for cond in domain_conds:
+            c_expr = cond.get('expr')
+            if c_expr is not None:
+                c_sub = c_expr.subs([(x, rx), (y, ry), (z, rz)])
+                try:
+                    roots = sp.solve(c_sub, t)
+                    for r_ in roots:
+                        if r_.is_real:
+                            r_num = safe_numeric_approx(r_)
+                            if r_num is not None and 0 <= r_num < 2 * math.pi:
+                                forbidden_pts.add(r_)
+                except Exception:
+                    pass
+
+        if not forbidden_pts:
+            return [make_interval(
+                make_finite_endpoint(sp.Integer(0), 0.0), True,
+                make_finite_endpoint(2 * sp.pi, 2 * math.pi), False
+            )], "0 <= t < 2*pi"
+
+        sorted_pts = sorted(list(forbidden_pts), key=lambda p: float(p.evalf()))
+        intervals = []
+        cur_min = sp.Integer(0)
+        cur_min_inc = True
+        for pt in sorted_pts:
+            if pt == cur_min:
+                cur_min_inc = False
+                continue
+            intervals.append(make_interval(
+                make_finite_endpoint(cur_min), cur_min_inc,
+                make_finite_endpoint(pt), False
+            ))
+            cur_min = pt
+            cur_min_inc = False
+        intervals.append(make_interval(
+            make_finite_endpoint(cur_min), cur_min_inc,
+            make_finite_endpoint(2 * sp.pi, 2 * math.pi), False
+        ))
+        return intervals, "0 <= t < 2*pi with singularities excluded"
+
+    # Non-periodic curve
+    t_min = sp.Integer(-1000)
+    t_max = sp.Integer(1000)
+
+    # 1. Bounds clipping from coordinates
+    is_hyperbola_1_over_t = False
+    for expr in (rx, ry, rz):
+        if expr == t**2 or (isinstance(expr, sp.Pow) and expr.exp == 2 and expr.base == t):
+            t_min = sp.Max(t_min, -sp.sqrt(1000))
+            t_max = sp.Min(t_max, sp.sqrt(1000))
+        elif isinstance(expr, sp.exp) and expr.args[0] == t:
+            t_max = sp.Min(t_max, sp.log(1000))
+        elif expr == 1/t or expr == sp.Pow(t, -1):
+            is_hyperbola_1_over_t = True
+        elif expr.is_polynomial(t) and sp.degree(expr, t) == 1:
+            a_c = expr.coeff(t, 1)
+            b_c = expr.subs(t, 0)
+            if a_c > 0:
+                t_min = sp.Max(t_min, (-1000 - b_c)/a_c)
+                t_max = sp.Min(t_max, (1000 - b_c)/a_c)
+            elif a_c < 0:
+                t_min = sp.Max(t_min, (1000 - b_c)/a_c)
+                t_max = sp.Min(t_max, (-1000 - b_c)/a_c)
+
+    # 2. Even roots / Radicands
+    radicands = []
+    for expr in (rx, ry, rz):
+        for part in expr.atoms(sp.Pow):
+            if isinstance(part.exp, sp.Rational) and part.exp.q % 2 == 0:
+                radicands.append(part.base)
+            elif part.exp == sp.Rational(1, 2) or part.exp == 0.5:
+                radicands.append(part.base)
+
+    intervals_sp = [(t_min, t_max)]
+
+    for rad in radicands:
+        new_intervals = []
+        for iv_start, iv_end in intervals_sp:
+            start_num = safe_numeric_approx(iv_start)
+            end_num = safe_numeric_approx(iv_end)
+            if start_num is None or end_num is None or start_num >= end_num:
+                continue
+
+            try:
+                roots = sp.solve(rad, t)
+                real_roots = []
+                for r_ in roots:
+                    if r_.is_real:
+                        r_n = safe_numeric_approx(r_)
+                        if r_n is not None and start_num < r_n < end_num:
+                            real_roots.append((r_n, r_))
+                real_roots.sort(key=lambda x: x[0])
+            except Exception:
+                real_roots = []
+
+            cuts = [iv_start] + [r[1] for r in real_roots] + [iv_end]
+            for i in range(len(cuts) - 1):
+                c1, c2 = cuts[i], cuts[i+1]
+                mid = (c1 + c2) / 2
+                try:
+                    val = float(rad.subs(t, mid).evalf())
+                    if val >= -1e-9:
+                        new_intervals.append((c1, c2))
+                except Exception:
+                    pass
+        intervals_sp = new_intervals
+
+    if not intervals_sp:
+        return [], "Empty domain"
+
+    # 3. Forbidden points (singularities / denominators / domain conditions)
+    forbidden_points = set()
+    for expr in (rx, ry, rz):
+        for part in expr.atoms(sp.Pow):
+            if part.exp.is_negative:
+                try:
+                    roots = sp.solve(part.base, t)
+                    for r_ in roots:
+                        if r_.is_real: forbidden_points.add(r_)
+                except Exception: pass
+        frac_den = sp.fraction(expr)[1]
+        if frac_den != 1:
+            try:
+                roots = sp.solve(frac_den, t)
+                for r_ in roots:
+                    if r_.is_real: forbidden_points.add(r_)
+            except Exception: pass
+
+    for cond in domain_conds:
+        c_expr = cond.get('expr')
+        if c_expr is not None:
+            c_sub = c_expr.subs([(x, rx), (y, ry), (z, rz)])
+            try:
+                roots = sp.solve(c_sub, t)
+                for r_ in roots:
+                    if r_.is_real: forbidden_points.add(r_)
+            except Exception: pass
+
+    final_intervals = []
+    if is_hyperbola_1_over_t:
+        int1 = make_interval(
+            make_finite_endpoint(-1000, -1000.0), True,
+            make_finite_endpoint(sp.Rational(-1, 1000), -0.001), True
+        )
+        int2 = make_interval(
+            make_finite_endpoint(sp.Rational(1, 1000), 0.001), True,
+            make_finite_endpoint(1000, 1000.0), True
+        )
+        final_intervals = [int1, int2]
+        desc = "[-1000, -0.001] U [0.001, 1000]"
+    else:
+        for iv_start, iv_end in intervals_sp:
+            s_num = safe_numeric_approx(iv_start)
+            e_num = safe_numeric_approx(iv_end)
+            if s_num is None or e_num is None: continue
+            pts_in_iv = sorted([p for p in forbidden_points if s_num < safe_numeric_approx(p) < e_num], key=lambda p: float(p.evalf()))
+            if not pts_in_iv:
+                final_intervals.append(make_interval(
+                    make_finite_endpoint(iv_start), True,
+                    make_finite_endpoint(iv_end), True
+                ))
+            else:
+                cur_min = iv_start
+                cur_min_inc = True
+                for pt in pts_in_iv:
+                    final_intervals.append(make_interval(
+                        make_finite_endpoint(cur_min), cur_min_inc,
+                        make_finite_endpoint(pt), False
+                    ))
+                    cur_min = pt
+                    cur_min_inc = False
+                final_intervals.append(make_interval(
+                    make_finite_endpoint(cur_min), cur_min_inc,
+                    make_finite_endpoint(iv_end), True
+                ))
+        desc = ', '.join(f"[{iv['min']['exact']}, {iv['max']['exact']}]" for iv in final_intervals)
+
+    return final_intervals, desc
