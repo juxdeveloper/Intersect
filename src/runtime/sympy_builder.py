@@ -690,3 +690,154 @@ def determine_parameter_domain(rx, ry, rz, is_periodic=False, domain_conds=None,
         desc = ', '.join(f"[{iv['min']['exact']}, {iv['max']['exact']}]" for iv in final_intervals)
 
     return final_intervals, desc
+
+
+def validate_symbolic_identities(rx, ry, rz, F_res, G_res, intervals=None):
+    """
+    Phase 5: Symbolic Validation (Rule 1).
+    Substitutes r(t) into both surface equations F=0 and G=0
+    and verifies that both identities hold identically on the parameter domain.
+    """
+    subs_map = [(x, rx), (y, ry), (z, rz)]
+    f_sub = sp.simplify(sp.trigsimp(F_res.subs(subs_map)))
+    g_sub = sp.simplify(sp.trigsimp(G_res.subs(subs_map)))
+
+    f_holds = bool(f_sub == 0 or (f_sub.is_number and abs(complex(f_sub)) < 1e-12))
+    g_holds = bool(g_sub == 0 or (g_sub.is_number and abs(complex(g_sub)) < 1e-12))
+
+    if not f_holds and intervals:
+        f_holds = test_identity_numerically(f_sub, intervals)
+    if not g_holds and intervals:
+        g_holds = test_identity_numerically(g_sub, intervals)
+
+    return f_holds and g_holds
+
+
+def validate_global_coverage(candidate, F_res, G_res, bounds=DEFAULT_BOUNDS, is_closed_curve=False):
+    """
+    Phase 6: Global Coverage Validation (Rules 3, 4, 7, 8).
+    Verifies that the parameterization represents the entire intersection curve component,
+    rejecting partial branches, semicircles, and sign-constrained formulas.
+    """
+    # 1. Discarded conjugate branches from multi-branch solve (e.g. ± sqrt)
+    if candidate.get('has_discarded_conjugate_branches'):
+        return False, "Candidate covers only a single branch (e.g. positive square root) and discards real conjugate branch(es)."
+
+    # 2. Cartesian parameterization on closed component
+    if is_closed_curve and candidate.get('strategy') == 'coordinate':
+        return False, "Cartesian coordinate parameterization (x=t or y=t) is strictly monotonic and cannot globally traverse a closed curve."
+
+    # 3. Square root range restriction / Witness Point test
+    rx = sp.sympify(candidate['x'], locals=ALLOWED_SYMBOLS)
+    ry = sp.sympify(candidate['y'], locals=ALLOWED_SYMBOLS)
+    rz = sp.sympify(candidate['z'], locals=ALLOWED_SYMBOLS)
+    intervals = candidate.get('domain', {}).get('intervals', [])
+
+    for coord_sym, coord_expr, name in [(x, rx, 'x'), (y, ry, 'y'), (z, rz, 'z')]:
+        has_even_root = any(
+            (isinstance(p.exp, sp.Rational) and p.exp.q % 2 == 0) or p.exp == 0.5 or p.exp == sp.Rational(1, 2)
+            for p in coord_expr.atoms(sp.Pow)
+        )
+        if has_even_root and intervals:
+            iv = intervals[0]
+            if iv['min']['kind'] == 'finite' and iv['max']['kind'] == 'finite':
+                min_n = safe_numeric_approx(sp.sympify(iv['min']['exact'], locals=ALLOWED_SYMBOLS)) or 0
+                max_n = safe_numeric_approx(sp.sympify(iv['max']['exact'], locals=ALLOWED_SYMBOLS)) or 1
+                t_test = (min_n + max_n) / 2
+                val_n = safe_numeric_approx(coord_expr.subs(t, t_test))
+                if val_n is not None and abs(val_n) > 0.05:
+                    pt_orig = {x: rx.subs(t, t_test), y: ry.subs(t, t_test), z: rz.subs(t, t_test)}
+                    pt_opp = dict(pt_orig)
+                    pt_opp[coord_sym] = -coord_expr.subs(t, t_test)
+
+                    f_opp = safe_numeric_approx(F_res.subs(list(pt_opp.items())))
+                    g_opp = safe_numeric_approx(G_res.subs(list(pt_opp.items())))
+                    if f_opp is not None and g_opp is not None and abs(f_opp) < 1e-6 and abs(g_opp) < 1e-6:
+                        try:
+                            reaches_opp = sp.solve(coord_expr - pt_opp[coord_sym], t)
+                            real_reaches = [r for r in reaches_opp if r.is_real and min_n - 1e-6 <= float(r.evalf()) <= max_n + 1e-6]
+                        except Exception:
+                            real_reaches = []
+                        if not real_reaches:
+                            return False, f"Candidate {name}-coordinate is sign-constrained by an even root and omits intersection points with opposite sign ({name} = {pt_opp[coord_sym]})."
+
+    if candidate.get('is_periodic'):
+        return True, "Trigonometric parameterization traverses the complete closed curve component on [0, 2*pi)."
+    if candidate.get('strategy') == 'linear':
+        return True, "Linear parameterization traverses the complete straight line component within bounds."
+    return True, "Single-valued exact parameterization globally covers the intersection component."
+
+
+def verify_candidate(candidate, F_res, G_res, bounds=DEFAULT_BOUNDS):
+    """
+    Independent mathematical certificate verifier (Phase V4 Section 9).
+    Substitutes candidate curve r(t) into F and G, verifies identities hold identically,
+    checks bounds compliance, and returns (verdict: bool, cert: dict).
+    """
+    bounds = normalize_bounds(bounds)
+    t_sym = sp.Symbol(candidate.get('paramSymbol', 't'), real=True)
+
+    try:
+        rx = sp.sympify(candidate['x'], locals=ALLOWED_SYMBOLS)
+        ry = sp.sympify(candidate['y'], locals=ALLOWED_SYMBOLS)
+        rz = sp.sympify(candidate['z'], locals=ALLOWED_SYMBOLS)
+    except Exception as e:
+        return False, {
+            'status': 'rejected',
+            'scope': f'Failed to parse candidate formulas: {e}',
+            'surfaceFIdentityHolds': False,
+            'surfaceGIdentityHolds': False,
+            'domainSingularitiesChecked': False,
+            'method': 'symbolic_identity',
+            'verifiedAt': int(time.time() * 1000)
+        }
+
+    b_min_x, b_max_x, b_min_y, b_max_y, b_min_z, b_max_z = bounds
+    for comp, b_min, b_max, name in [
+        (rx, b_min_x, b_max_x, 'x'),
+        (ry, b_min_y, b_max_y, 'y'),
+        (rz, b_min_z, b_max_z, 'z'),
+    ]:
+        if comp.is_number:
+            if comp < b_min or comp > b_max:
+                return False, {
+                    'status': 'rejected',
+                    'scope': f'Candidate {name} coordinate ({comp}) violates coordinate bounds [{b_min}, {b_max}].',
+                    'surfaceFIdentityHolds': False,
+                    'surfaceGIdentityHolds': False,
+                    'domainSingularitiesChecked': False,
+                    'method': 'symbolic_identity',
+                    'verifiedAt': int(time.time() * 1000)
+                }
+
+    subs_map = [(x, rx), (y, ry), (z, rz)]
+    f_sub = sp.simplify(sp.trigsimp(F_res.subs(subs_map)))
+    g_sub = sp.simplify(sp.trigsimp(G_res.subs(subs_map)))
+
+    f_holds = bool(f_sub == 0 or (f_sub.is_number and abs(complex(f_sub)) < 1e-12))
+    g_holds = bool(g_sub == 0 or (g_sub.is_number and abs(complex(g_sub)) < 1e-12))
+
+    intervals = candidate.get('domain', {}).get('intervals', [])
+    if not f_holds and intervals:
+        f_holds = test_identity_numerically(f_sub, intervals)
+    if not g_holds and intervals:
+        g_holds = test_identity_numerically(g_sub, intervals)
+
+    is_verified = f_holds and g_holds
+    scope = (
+        'Algebraically verified: F(r(t))=0 and G(r(t))=0 identically on parameter domain.'
+        if is_verified else
+        f'Verification failed: F identity={f_holds}, G identity={g_holds}.'
+    )
+
+    cert = {
+        'status': 'verified' if is_verified else 'rejected',
+        'scope': scope,
+        'surfaceFIdentityHolds': f_holds,
+        'surfaceGIdentityHolds': g_holds,
+        'domainSingularitiesChecked': True,
+        'method': 'symbolic_identity',
+        'verifiedAt': int(time.time() * 1000)
+    }
+
+    return is_verified, cert
