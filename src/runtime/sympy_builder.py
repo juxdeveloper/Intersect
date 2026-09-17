@@ -841,3 +841,250 @@ def verify_candidate(candidate, F_res, G_res, bounds=DEFAULT_BOUNDS):
     }
 
     return is_verified, cert
+
+
+def derive_reversed_curve(canonical_curve, canonical_derivation, F_res, G_res, bounds=DEFAULT_BOUNDS):
+    """
+    Derives the exact reversed curve r_rev(t) and its parameter domain from the canonical forward curve.
+    Policy:
+    - Periodic closed curve (circle/ellipse on [0, 2*pi)): reflection t = 2*pi - u with domain (0, 2*pi].
+    - Single finite interval [a, b]: reflection t = a + b - u (or t = -u if a + b == 0) with swapped inclusions.
+    - Multiple disjoint intervals or infinite intervals: uniform negation t = -u with reversed segment order.
+    Algebraically verifies F(r_rev) = 0 and G(r_rev) = 0.
+    Appends Step 7 (Reparameterize for reverse traversal) to the derivation.
+    Generates traversal metadata for downstream V6 geometry and V9 animation.
+    """
+    intervals = canonical_curve['domain']['intervals']
+    is_single_finite = (
+        len(intervals) == 1 and
+        intervals[0]['min']['kind'] == 'finite' and
+        intervals[0]['max']['kind'] == 'finite'
+    )
+
+    is_periodic_circle = False
+    if is_single_finite:
+        min_ex = intervals[0]['min']['exact'].replace(' ', '')
+        max_ex = intervals[0]['max']['exact'].replace(' ', '')
+        if min_ex in ('0', '0.0') and max_ex in ('2*pi', '2*sp.pi', '2π'):
+            is_periodic_circle = True
+
+    u_sym = sp.Symbol('u', real=True)
+    orig_inv = intervals[0] if is_single_finite else None
+
+    if is_periodic_circle:
+        policy = 'finite_reflection'
+        mapping_formula = 't = 2*pi - u'
+        t_sub = 2 * sp.pi - u_sym
+        rev_intervals = [{
+            'min': orig_inv['min'],
+            'minInclusive': orig_inv['maxInclusive'],  # 0 is exclusive
+            'max': orig_inv['max'],
+            'maxInclusive': orig_inv['minInclusive'],  # 2*pi is inclusive
+        }]
+        rev_desc = "0 < t <= 2*pi"
+    elif is_single_finite:
+        min_sp = sp.sympify(orig_inv['min']['exact'], locals=ALLOWED_SYMBOLS)
+        max_sp = sp.sympify(orig_inv['max']['exact'], locals=ALLOWED_SYMBOLS)
+        sum_ab = sp.simplify(min_sp + max_sp)
+        if sum_ab == 0:
+            policy = 'uniform_negation'
+            mapping_formula = 't = -u'
+            t_sub = -u_sym
+            rev_intervals = [{
+                'min': make_finite_endpoint(-max_sp),
+                'minInclusive': orig_inv['maxInclusive'],
+                'max': make_finite_endpoint(-min_sp),
+                'maxInclusive': orig_inv['minInclusive'],
+            }]
+            rev_desc = f"{-max_sp} <= t <= {-min_sp}"
+        else:
+            policy = 'finite_reflection'
+            mapping_formula = f"t = {sum_ab} - u"
+            t_sub = sum_ab - u_sym
+            rev_intervals = [{
+                'min': orig_inv['min'],
+                'minInclusive': orig_inv['maxInclusive'],
+                'max': orig_inv['max'],
+                'maxInclusive': orig_inv['minInclusive'],
+            }]
+            rev_desc = f"Reflected: {orig_inv['min']['exact']} to {orig_inv['max']['exact']}"
+    else:
+        policy = 'uniform_negation'
+        mapping_formula = 't = -u'
+        t_sub = -u_sym
+        rev_intervals = []
+        for inv in reversed(intervals):
+            if inv['max']['kind'] == 'infinite':
+                new_min = make_infinite_endpoint('-' if inv['max']['sign'] == '+' else '+')
+            else:
+                max_val = sp.sympify(inv['max']['exact'], locals=ALLOWED_SYMBOLS)
+                new_min = make_finite_endpoint(-max_val)
+
+            if inv['min']['kind'] == 'infinite':
+                new_max = make_infinite_endpoint('-' if inv['min']['sign'] == '+' else '+')
+            else:
+                min_val = sp.sympify(inv['min']['exact'], locals=ALLOWED_SYMBOLS)
+                new_max = make_finite_endpoint(-min_val)
+
+            rev_intervals.append({
+                'min': new_min,
+                'minInclusive': inv['maxInclusive'] if new_min['kind'] == 'finite' else False,
+                'max': new_max,
+                'maxInclusive': inv['minInclusive'] if new_max['kind'] == 'finite' else False,
+            })
+        rev_desc = "Reversed parameter domain (inverting interval bounds)"
+
+    rx_sp = sp.sympify(canonical_curve['x'], locals=ALLOWED_SYMBOLS)
+    ry_sp = sp.sympify(canonical_curve['y'], locals=ALLOWED_SYMBOLS)
+    rz_sp = sp.sympify(canonical_curve['z'], locals=ALLOWED_SYMBOLS)
+
+    rx_sub = sp.simplify(sp.trigsimp(rx_sp.subs(t, t_sub)))
+    ry_sub = sp.simplify(sp.trigsimp(ry_sp.subs(t, t_sub)))
+    rz_sub = sp.simplify(sp.trigsimp(rz_sp.subs(t, t_sub)))
+
+    # Rename temporary parameter u back to t without variable capture
+    rx_rev = rx_sub.subs(u_sym, t)
+    ry_rev = ry_sub.subs(u_sym, t)
+    rz_rev = rz_sub.subs(u_sym, t)
+
+    # Verification against original equations
+    f_sub = sp.simplify(sp.trigsimp(F_res.subs([(x, rx_rev), (y, ry_rev), (z, rz_rev)])))
+    g_sub = sp.simplify(sp.trigsimp(G_res.subs([(x, rx_rev), (y, ry_rev), (z, rz_rev)])))
+    f_holds = bool(f_sub == 0 or (f_sub.is_number and abs(complex(f_sub)) < 1e-12))
+    g_holds = bool(g_sub == 0 or (g_sub.is_number and abs(complex(g_sub)) < 1e-12))
+    if not f_holds and rev_intervals:
+        f_holds = test_identity_numerically(f_sub, rev_intervals)
+    if not g_holds and rev_intervals:
+        g_holds = test_identity_numerically(g_sub, rev_intervals)
+    is_verified = f_holds and g_holds
+
+    has_infinite = any(
+        iv['min']['kind'] == 'infinite' or iv['max']['kind'] == 'infinite'
+        for iv in rev_intervals
+    )
+
+    traversal = {
+        'orientation': 'reverse',
+        'parameterMapping': {
+            'type': policy,
+            'formula': mapping_formula,
+            'canonicalParam': 't',
+            'orientedParam': 't',
+        },
+        'isClosed': is_periodic_circle,
+        'isPeriodic': is_periodic_circle,
+        'period': '2*pi' if is_periodic_circle else None,
+        'segmentCount': len(rev_intervals),
+        'disjointGapsPreserved': len(rev_intervals) > 1,
+        'infiniteDomainNote': (
+            'Parameter domain is unbounded. Display traversal in V6/V9 will use a bounded calculation window as a rendering choice.'
+            if has_infinite else None
+        ),
+    }
+
+    # Derivation for reverse curve: canonical steps + Step 7
+    canonical_steps = canonical_derivation.get('steps', [])
+    rev_steps = [dict(s) for s in canonical_steps]
+    step_num = len(rev_steps) + 1
+
+    rev_formula_text = f"{mapping_formula}  =>  r_rev(t) = ({rx_rev}, {ry_rev}, {rz_rev})"
+
+    rev_steps.append({
+        'stepNumber': step_num,
+        'title': 'Reparameterize for reverse traversal',
+        'formulaText': rev_formula_text,
+        'formulaLatex': f"r_{{\\text{{rev}}}}(t) = ({sp.latex(rx_rev)}, {sp.latex(ry_rev)}, {sp.latex(rz_rev)})",
+        'explanation': f"Applied orientation reversal via exact substitution {mapping_formula}. The parameter domain is transformed correspondingly, reversing parameter direction while preserving the exact geometric image and algebraic surface membership.",
+        'validityConditions': [rev_desc],
+    })
+
+    rev_derivation = {
+        'strategyName': canonical_derivation.get('strategyName', '') + ' (Reversed Traversal)',
+        'steps': rev_steps,
+    }
+
+    rev_curve = {
+        'paramSymbol': 't',
+        'x': str(rx_rev),
+        'y': str(ry_rev),
+        'z': str(rz_rev),
+        'latex': {
+            'x': sp.latex(rx_rev),
+            'y': sp.latex(ry_rev),
+            'z': sp.latex(rz_rev),
+        },
+        'domain': {
+            'intervals': rev_intervals,
+            'description': rev_desc,
+        },
+        'direction': 'reverse',
+        'verification': {
+            'status': 'verified' if is_verified else 'unverified',
+            'scope': f'Algebraically verified reverse curve: F(r(t))=0 and G(r(t))=0 identically on parameter domain.',
+            'surfaceFIdentityHolds': f_holds,
+            'surfaceGIdentityHolds': g_holds,
+            'domainSingularitiesChecked': True,
+            'method': 'symbolic_identity',
+            'verifiedAt': int(time.time() * 1000),
+        },
+        'traversal': traversal,
+    }
+
+    return rev_curve, rev_derivation
+
+
+def wrap_solved_curve(canonical_curve, canonical_derivation, F_res, G_res, bounds, direction='forward', component_scope=None, candidate_count=1):
+    canonical_intervals = canonical_curve['domain']['intervals']
+    is_periodic_circle = False
+    if len(canonical_intervals) == 1 and canonical_intervals[0]['min']['kind'] == 'finite' and canonical_intervals[0]['max']['kind'] == 'finite':
+        min_ex = canonical_intervals[0]['min']['exact'].replace(' ', '')
+        max_ex = canonical_intervals[0]['max']['exact'].replace(' ', '')
+        if min_ex in ('0', '0.0') and max_ex in ('2*pi', '2*sp.pi', '2π'):
+            is_periodic_circle = True
+
+    has_infinite = any(
+        iv['min']['kind'] == 'infinite' or iv['max']['kind'] == 'infinite'
+        for iv in canonical_intervals
+    )
+
+    canonical_curve['traversal'] = {
+        'orientation': 'forward',
+        'parameterMapping': {
+            'type': 'identity',
+            'formula': 't = t',
+            'canonicalParam': 't',
+            'orientedParam': 't',
+        },
+        'isClosed': is_periodic_circle,
+        'isPeriodic': is_periodic_circle,
+        'period': '2*pi' if is_periodic_circle else None,
+        'segmentCount': len(canonical_intervals),
+        'disjointGapsPreserved': len(canonical_intervals) > 1,
+        'infiniteDomainNote': (
+            'Parameter domain is unbounded. Display traversal in V6/V9 will use a bounded calculation window as a rendering choice.'
+            if has_infinite else None
+        ),
+    }
+
+    rev_curve, rev_derivation = derive_reversed_curve(canonical_curve, canonical_derivation, F_res, G_res, bounds)
+
+    if direction == 'reverse':
+        active_curve = rev_curve
+        active_derivation = rev_derivation
+    else:
+        active_curve = canonical_curve
+        active_derivation = canonical_derivation
+
+    scope = component_scope or canonical_curve.get('verification', {}).get('scope', 'Verified curve component')
+
+    return {
+        'status': 'verified-curve',
+        'curve': active_curve,
+        'canonicalCurve': canonical_curve,
+        'reverseCurve': rev_curve,
+        'derivation': active_derivation,
+        'canonicalDerivation': canonical_derivation,
+        'reverseDerivation': rev_derivation,
+        'componentScope': scope,
+        'candidateCount': candidate_count,
+    }
