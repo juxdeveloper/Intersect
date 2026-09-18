@@ -206,3 +206,286 @@ class CurveEvaluator {
     return { x: rx.value, y: ry.value, z: rz.value, t };
   }
 }
+
+/**
+ * Samples the active exact curve within the requested finite render region and budget.
+ */
+export function sampleExactCurve(
+  curve: ExactCurve,
+  renderRegion: WorldBounds,
+  budget: GeometryBudget,
+  isCancelled?: () => boolean,
+): CurveGeometryBuffer {
+  const startTime = Date.now();
+  const orientation: TraversalDirection = curve.traversal?.orientation ?? curve.direction;
+  const paramSymbol = curve.paramSymbol || (orientation === 'reverse' ? 'u' : 't');
+
+  // Parse components to AST ExpressionNodes
+  const xRes = parseCurveExpression(curve.x, paramSymbol);
+  const yRes = parseCurveExpression(curve.y, paramSymbol);
+  const zRes = parseCurveExpression(curve.z, paramSymbol);
+
+  if (!xRes.success || !yRes.success || !zRes.success) {
+    return {
+      status: 'unsupported-evaluation',
+      positions: new Float32Array(0),
+      tValues: new Float64Array(0),
+      segmentBreaks: new Uint32Array(0),
+      sampleCount: 0,
+      segmentCount: 0,
+      boundingBox: null,
+      traversalOrientation: orientation,
+      isClosed: false,
+      isPeriodic: false,
+      diagnostics: {
+        subdivisions: 0,
+        clippedSegments: 0,
+        durationMs: Date.now() - startTime,
+        message: `Failed to parse curve expression: ${[!xRes.success && xRes.error, !yRes.success && yRes.error, !zRes.success && zRes.error].filter(Boolean).join('; ')}`,
+      },
+    };
+  }
+
+  const evaluator = new CurveEvaluator(xRes.ast, yRes.ast, zRes.ast);
+
+  const posList: number[] = [];
+  const tList: number[] = [];
+  const breakList: number[] = [];
+
+  let subdivisions = 0;
+  let clippedSegments = 0;
+  let budgetExhausted = false;
+  let infiniteDomainClamped = false;
+
+  const intervals = curve.domain.intervals;
+  if (intervals.length === 0) {
+    return {
+      status: 'no-geometry-detected',
+      positions: new Float32Array(0),
+      tValues: new Float64Array(0),
+      segmentBreaks: new Uint32Array(0),
+      sampleCount: 0,
+      segmentCount: 0,
+      boundingBox: null,
+      traversalOrientation: orientation,
+      isClosed: false,
+      isPeriodic: false,
+      diagnostics: {
+        subdivisions: 0,
+        clippedSegments: 0,
+        durationMs: Date.now() - startTime,
+        message: 'Empty parameter domain',
+      },
+    };
+  }
+
+  // Iterate over intervals in strict parameter order
+  for (const interval of intervals) {
+    if (isCancelled?.()) {
+      return {
+        status: 'cancelled',
+        positions: new Float32Array(0),
+        tValues: new Float64Array(0),
+        segmentBreaks: new Uint32Array(0),
+        sampleCount: 0,
+        segmentCount: 0,
+        boundingBox: null,
+        traversalOrientation: orientation,
+        isClosed: false,
+        isPeriodic: false,
+        diagnostics: {
+          subdivisions,
+          clippedSegments,
+          durationMs: Date.now() - startTime,
+          message: 'Operation cancelled',
+        },
+      };
+    }
+
+    // Determine finite numerical bounds for this interval
+    let tMin: number;
+    let tMax: number;
+
+    if (interval.min.kind === 'finite') {
+      tMin = interval.min.numericApprox ?? parseFloat(interval.min.exact);
+      if (!interval.minInclusive) {
+        tMin += 1e-6;
+      }
+    } else {
+      // Infinite lower bound: clamped to bounded window (Section 7.D)
+      tMin = -100;
+      infiniteDomainClamped = true;
+    }
+
+    if (interval.max.kind === 'finite') {
+      tMax = interval.max.numericApprox ?? parseFloat(interval.max.exact);
+      if (!interval.maxInclusive) {
+        tMax -= 1e-6;
+      }
+    } else {
+      // Infinite upper bound: clamped to bounded window (Section 7.D)
+      tMax = 100;
+      infiniteDomainClamped = true;
+    }
+
+    if (tMin >= tMax) continue;
+
+    // Disconnected interval segment: start a new polyline segment
+    let inActiveSegment = false;
+
+    // Adaptive subdivision helper
+    function sampleIntervalSubdivision(tA: number, tB: number, depth: number) {
+      if (budgetExhausted) return;
+
+      const pA = evaluator.evaluate(tA);
+      const pB = evaluator.evaluate(tB);
+
+      if (!pA && !pB) {
+        // Entire interval invalid or domain gap
+        inActiveSegment = false;
+        return;
+      }
+
+      if (!pA || !pB) {
+        // Discontinuity / singularity boundary: isolate if depth allows
+        if (depth < budget.maxCurveSubdivisionDepth) {
+          const tMid = (tA + tB) * 0.5;
+          subdivisions++;
+          sampleIntervalSubdivision(tA, tMid, depth + 1);
+          sampleIntervalSubdivision(tMid, tB, depth + 1);
+        } else {
+          inActiveSegment = false;
+        }
+        return;
+      }
+
+      // Both pA and pB are valid. Check anti-aliasing multi-point chord deviation (Section 7.B)
+      const tMid = (tA + tB) * 0.5;
+      const t13 = tA + (tB - tA) * (1 / 3);
+      const t23 = tA + (tB - tA) * (2 / 3);
+
+      const pMid = evaluator.evaluate(tMid);
+      const p13 = evaluator.evaluate(t13);
+      const p23 = evaluator.evaluate(t23);
+
+      if (!pMid || !p13 || !p23) {
+        // Interior pole / singularity
+        if (depth < budget.maxCurveSubdivisionDepth) {
+          subdivisions++;
+          sampleIntervalSubdivision(tA, tMid, depth + 1);
+          sampleIntervalSubdivision(tMid, tB, depth + 1);
+        } else {
+          inActiveSegment = false;
+        }
+        return;
+      }
+
+      const dMid = pointToSegmentDistance(pMid.x, pMid.y, pMid.z, pA.x, pA.y, pA.z, pB.x, pB.y, pB.z);
+      const d13 = pointToSegmentDistance(p13.x, p13.y, p13.z, pA.x, pA.y, pA.z, pB.x, pB.y, pB.z);
+      const d23 = pointToSegmentDistance(p23.x, p23.y, p23.z, pA.x, pA.y, pA.z, pB.x, pB.y, pB.z);
+
+      const maxDeviation = Math.max(dMid, d13, d23);
+
+      if (maxDeviation > budget.curveGeometricTolerance && depth < budget.maxCurveSubdivisionDepth) {
+        subdivisions++;
+        sampleIntervalSubdivision(tA, tMid, depth + 1);
+        sampleIntervalSubdivision(tMid, tB, depth + 1);
+        return;
+      }
+
+      // Segment [pA, pB] accepted. Now clip against finite renderRegion (Section 7.C)
+      const clip = clipSegmentToBox(pA.x, pA.y, pA.z, pB.x, pB.y, pB.z, renderRegion);
+      if (!clip) {
+        // Outside renderRegion
+        inActiveSegment = false;
+        clippedSegments++;
+        return;
+      }
+
+      const [u1, u2] = clip;
+
+      // Check if entering or already in active segment
+      if (u1 > 0 || !inActiveSegment) {
+        // Entry vertex
+        const tEntry = tA + u1 * (tB - tA);
+        const pEntry = u1 > 0 ? (evaluator.evaluate(tEntry) ?? pA) : pA;
+
+        // Record segment break
+        breakList.push(posList.length / 3);
+        posList.push(pEntry.x, pEntry.y, pEntry.z);
+        tList.push(tEntry);
+        inActiveSegment = true;
+      }
+
+      // Exit vertex
+      const tExit = tA + u2 * (tB - tA);
+      const pExit = u2 < 1 ? (evaluator.evaluate(tExit) ?? pB) : pB;
+
+      posList.push(pExit.x, pExit.y, pExit.z);
+      tList.push(tExit);
+
+      if (u2 < 1) {
+        // Exited box
+        inActiveSegment = false;
+        clippedSegments++;
+      }
+
+      // Check sample budget
+      if (posList.length / 3 >= budget.maxCurveSamples) {
+        budgetExhausted = true;
+      }
+    }
+
+    // Coarse initial division to seed adaptive sampling with high fidelity
+    const K = budget.curveGeometricTolerance <= 0.003 ? 192 : budget.curveGeometricTolerance <= 0.01 ? 96 : 48;
+    const step = (tMax - tMin) / K;
+    for (let k = 0; k < K; k++) {
+      if (budgetExhausted) break;
+      const subA = tMin + k * step;
+      const subB = k === K - 1 ? tMax : tMin + (k + 1) * step;
+      sampleIntervalSubdivision(subA, subB, 0);
+    }
+  }
+
+  const sampleCount = posList.length / 3;
+  const positions = new Float32Array(posList);
+  const tValues = new Float64Array(tList);
+  const segmentBreaks = new Uint32Array(breakList);
+
+  const boundingBox = computeBoundingBox(positions, sampleCount);
+
+  let status: GeometryStatus = 'success';
+  if (sampleCount === 0) {
+    status = 'no-geometry-detected';
+  } else if (budgetExhausted) {
+    status = 'partial-budget-limited';
+  }
+
+  const isClosed = curve.traversal?.isClosed ?? false;
+  const isPeriodic = curve.traversal?.isPeriodic ?? false;
+
+  return {
+    status,
+    positions,
+    tValues,
+    segmentBreaks,
+    sampleCount,
+    segmentCount: breakList.length,
+    boundingBox,
+    traversalOrientation: orientation,
+    isClosed,
+    isPeriodic,
+    diagnostics: {
+      subdivisions,
+      clippedSegments,
+      durationMs: Date.now() - startTime,
+      message: budgetExhausted
+        ? 'Curve sampling reached configured sample budget limit.'
+        : infiniteDomainClamped
+          ? 'Infinite parameter domain sampled within bounded window [-100, 100].'
+          : sampleCount === 0
+            ? 'Curve does not enter requested finite render region.'
+            : 'Curve sampled successfully.',
+    },
+  };
+}
