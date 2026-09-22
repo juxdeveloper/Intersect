@@ -1,0 +1,74 @@
+:root {
+  /* Color Palette - Dark Minimal Reference Aesthetics */
+  --bg-app: #0c0d12;
+  --bg-sidebar: #13141b;
+  --bg-surface: #181922;
+  --bg-surface-elevated: #1f212d;
+  --bg-input: #15161f;
+  --bg-input-focus: #1a1c27;
+  
+  --border-subtle: #242634;
+  --border-medium: #323547;
+  --border-focus: #5b6282;
+
+  --text-primary: #f2f3f7;
+  --text-secondary: #9094a6;
+  --text-muted: #5e6275;
+  --text-dark: #0e1015;
+
+  /* Surface and Curve Accents */
+  --color-surface-f: #5b8ec7;
+  --color-surface-g: #8e95a5;
+  --color-curve: #f5eedb;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
+
+  /* Interactive Elements */
+  --btn-primary-bg: #eceef2;
+  --btn-primary-text: #111218;
+  --btn-primary-hover: #ffffff;
+  --btn-secondary-bg: #222431;
+  --btn-secondary-text: #d4d6e2;
+  --btn-secondary-hover: #2c2f40;
+
+  /* Typography */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 14px;
+  --space-lg: 20px;
+  --space-xl: 28px;
+  
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Shadows */
+  --shadow-subtle: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --shadow-panel: 4px 0 24px rgba(0, 0, 0, 0.4);
+
+  /* MathLive Virtual Keyboard Theming Tokens */
+  --ML__static-fonts: true;
+  --keyboard-background: #13141b;
+  --keyboard-border: #242634;
+  --keyboard-toolbar-background: #181922;
+  --keyboard-toolbar-text: #9094a6;
+  --keyboard-toolbar-text-active: #f2f3f7;
+  --keyboard-toolbar-background-hover: #1f212d;
+  --keyboard-toolbar-background-selected: #242634;
+  --keyboard-accent-color: #5b8ec7;
+  --keyboard-zindex: 1000;
+  --keycap-background: #1c1d27;
+  --keycap-background-hover: #262836;
+  --keycap-background-active: #323547;
+  --keycap-border: #2e3144;
+  --keycap-border-bottom: #1c1d27;
+  --keycap-text: #f2f3f7;
+  --keycap-secondary-background: #252838;
+  --keycap-secondary-text: #9094a6;
+}
