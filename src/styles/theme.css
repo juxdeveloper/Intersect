@@ -72,3 +72,116 @@
   --keycap-secondary-background: #252838;
   --keycap-secondary-text: #9094a6;
 }
+
+[data-theme="light"] {
+  --bg-app: #f6f7fa;
+  --bg-sidebar: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #f0f2f7;
+  --bg-input: #f3f5f9;
+  --bg-input-focus: #ffffff;
+
+  --border-subtle: #e3e6ee;
+  --border-medium: #cbd0dd;
+  --border-focus: #3b82f6;
+
+  --text-primary: #12141c;
+  --text-secondary: #4f5567;
+  --text-muted: #7b8396;
+  --text-dark: #0e1015;
+
+  --color-surface-f: #3a75b5;
+  --color-surface-g: #6b7280;
+  --color-curve: #b45309;
+
+  --btn-primary-bg: #12141c;
+  --btn-primary-text: #ffffff;
+  --btn-primary-hover: #222634;
+  --btn-secondary-bg: #ebeef5;
+  --btn-secondary-text: #1f2430;
+  --btn-secondary-hover: #dfe3ed;
+
+  --shadow-subtle: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-panel: 4px 0 24px rgba(0, 0, 0, 0.1);
+
+  --keyboard-background: #f0f2f7;
+  --keyboard-border: #d4d8e3;
+  --keyboard-toolbar-background: #ffffff;
+  --keyboard-toolbar-text: #4f5567;
+  --keyboard-toolbar-text-active: #12141c;
+  --keyboard-toolbar-background-hover: #e8ebf2;
+  --keyboard-toolbar-background-selected: #dce0ec;
+  --keyboard-accent-color: #2563eb;
+  --keycap-background: #ffffff;
+  --keycap-background-hover: #f3f5f9;
+  --keycap-background-active: #e2e6f0;
+  --keycap-border: #d4d8e3;
+  --keycap-border-bottom: #cbd0dd;
+  --keycap-text: #12141c;
+  --keycap-secondary-background: #e8ebf2;
+  --keycap-secondary-text: #4f5567;
+}
+
+/* Restrained, non-native scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Global accessible focus visible ring */
+:focus-visible {
+  outline: 2px solid var(--color-info, #60a5fa);
+  outline-offset: 2px;
+}
+
+/* Honor prefers-reduced-motion across all CSS animations and transitions */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
