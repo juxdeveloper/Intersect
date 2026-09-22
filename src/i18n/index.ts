@@ -491,3 +491,157 @@ export const translations: Record<SupportedLanguage, Translations> = {
     },
   },
 };
+
+/**
+ * Localizes solver derivation step titles.
+ */
+export function getLocalizedStepTitle(title: string, lang: SupportedLanguage): string {
+  if (lang === 'en') return title;
+
+  const map: Record<string, string> = {
+    'State surface equations and domain restrictions': 'Ecuaciones de las superficies y restricciones de dominio',
+    'State planar surface equations': 'Ecuaciones de las superficies planas',
+    'Compute plane normal vectors and cross product direction': 'Calcular vectores normales de los planos y dirección del producto vectorial',
+    'Find particular point and parameterize line': 'Hallar punto particular y parametrizar la recta',
+    'Establish parameter domain and bounding box': 'Establecer dominio del parámetro y límites de cálculo',
+    'Establish parameter domain and bounding box check': 'Establecer el dominio del parámetro y límites de cálculo',
+    'Establish parameter domain and calculation bounds': 'Establecer dominio del parámetro y límites de cálculo',
+    'Establish parameter domain': 'Establecer el dominio del parámetro',
+    'Verify algebraic surface membership': 'Verificar pertenencia algebraica a las superficies',
+    'Verify algebraic surface membership and result scope': 'Verificar pertenencia algebraica a las superficies y alcance del resultado',
+    'Result scope and component coverage': 'Alcance del resultado y cobertura de componentes',
+    'State surface equations and planar reduction': 'Ecuaciones de superficies y reducción planar',
+    'Project center onto cutting plane to find circle center and radius': 'Proyectar centro sobre el plano de corte para hallar centro y radio de la circunferencia',
+    'Construct exact orthonormal basis in the cutting plane': 'Construir base ortonormal exacta en el plano de corte',
+    'Parameterize intersection circle coordinates': 'Parametrizar coordenadas de la circunferencia de intersección',
+    'Parameterize circular cylinder cross-section': 'Parametrizar la sección transversal del cilindro',
+    'Substitute into planar surface G': 'Sustituir en la superficie plana G',
+    'Eliminate shared quadratic parts': 'Eliminar partes cuadráticas compartidas',
+    'Verify global coverage': 'Verificar cobertura global',
+    'Reparameterize for reverse traversal': 'Reparametrizar para recorrido en sentido inverso',
+    'Plane-Plane Intersection Line': 'Recta de intersección plano-plano',
+    'Eliminate dependent coordinate': 'Eliminar coordenada dependiente',
+    'Express in parametric vector form': 'Expresar en forma vectorial paramétrica',
+    'Quadric reduction': 'Reducción cuadrática',
+    'Direct substitution': 'Sustitución directa',
+    'Cylindrical Projection & Linear Substitution': 'Proyección cilíndrica y sustitución lineal',
+    'Result scope': 'Alcance del resultado',
+  };
+
+  if (map[title]) return map[title];
+
+  // Dynamic template matching
+  if (title.startsWith('State equations and identify cylinder cross-section in ')) {
+    const plane = title.replace('State equations and identify cylinder cross-section in ', '');
+    return `Plantear ecuaciones e identificar sección transversal del cilindro en el plano ${plane}`;
+  }
+  if (title.startsWith('Parameterize elliptic cross-section in ')) {
+    const plane = title.replace('Parameterize elliptic cross-section in ', '');
+    return `Parametrizar sección transversal elíptica en el plano ${plane}`;
+  }
+  if (title.startsWith('Substitute parameterized coordinates into planar surface to solve for ')) {
+    const variable = title.replace('Substitute parameterized coordinates into planar surface to solve for ', '');
+    return `Sustituir coordenadas parametrizadas en la superficie plana para despejar ${variable}`;
+  }
+  if (title.startsWith('Substitute parameterized coordinates into surface to solve for ')) {
+    const variable = title.replace('Substitute parameterized coordinates into surface to solve for ', '');
+    return `Sustituir coordenadas parametrizadas en la superficie para despejar ${variable}`;
+  }
+  if (title.startsWith('State equations and assign spatial coordinate ')) {
+    const rest = title.replace('State equations and assign spatial coordinate ', '');
+    return `Plantear ecuaciones y asignar coordenada espacial ${rest}`;
+  }
+  if (title.includes('Solve remaining coordinates in terms of parameter t')) {
+    return 'Resolver coordenadas restantes en función del parámetro t';
+  }
+
+  return title;
+}
+
+/**
+ * Localizes solver derivation step explanations.
+ */
+export function getLocalizedStepExplanation(explanation: string, lang: SupportedLanguage): string {
+  if (lang === 'en') return explanation;
+
+  const map: Record<string, string> = {
+    'Surface F is a circular cylinder of radius 2 parallel to the z-axis. Surface G is an affine plane.':
+      'La Superficie F es un cilindro circular de radio 2 paralelo al eje z. La Superficie G es un plano afín.',
+    'The projection onto the xy-plane is a circle of radius 2. Choose canonical parameter t ∈ [0, 2π).':
+      'La proyección sobre el plano xy es una circunferencia de radio 2. Se elige el parámetro canónico t ∈ [0, 2π).',
+    'Surface G defines z explicitly as x + y. Directly evaluate along the parameterized x(t) and y(t).':
+      'La Superficie G define z explícitamente como x + y. Se evalúa directamente a lo largo de x(t) e y(t).',
+    'The curve is completely contained within the calculation bounds [-1000, 1000]³.':
+      'La curva está contenida completamente dentro de los límites de cálculo [-1000, 1000]³.',
+    'Both surface equations are identically satisfied for all real t in [0, 2π).':
+      'Ambas ecuaciones se satisfacen idénticamente para todo t real en [0, 2π).',
+    'Single closed smooth elliptic component formed by the planar section of the cylinder.':
+      'Componente elíptica suave y cerrada formada por la sección plana del cilindro.',
+    'Finite reflection t = 2π - u traverses the closed ellipse in reverse with parameter u ∈ (0, 2π] while preserving identical geometry and algebraic validity.':
+      'La reflexión finita t = 2π - u recorre la elipse cerrada en sentido inverso con parámetro u ∈ (0, 2π], preservando la geometría e identidades algebraicas.',
+    'Two distinct non-parallel planes in three-dimensional space intersect along a one-dimensional straight line.':
+      'Dos planos distintos no paralelos en el espacio tridimensional se cortan a lo largo de una recta unidimensional.',
+    'The line of intersection is orthogonal to both surface normal vectors, given by their vector cross product n1 x n2.':
+      'La recta de intersección es ortogonal a ambos vectores normales, dada por su producto vectorial n1 x n2.',
+    'Setting one coordinate to zero determines a particular point p0 common to both planes.':
+      'Fijar una coordenada en cero determina un punto particular p0 común a ambos planos.',
+    'Intersecting the infinite straight line with calculation bounds [-1000, 1000]^3 establishes the bounded parameter domain.':
+      'Intersecar la recta infinita con los límites de cálculo [-1000, 1000]³ establece el dominio acotado del parámetro.',
+    'Substituting r(t) into both plane equations satisfies both linear equalities identically.':
+      'Sustituir r(t) en ambas ecuaciones de los planos satisface ambas igualdades lineales idénticamente.',
+    'Extracted sphere center and radius by completing the square, intersected by the cutting plane.':
+      'Se extrajeron el centro y radio de la esfera completando cuadrados, intersecados por el plano de corte.',
+    'Two orthogonal unit vectors spanning the cutting plane are constructed via cross products.':
+      'Se construyen dos vectores unitarios ortogonales que generan el plano de corte mediante productos vectoriales.',
+    'Trigonometric circle parameterization along the orthonormal planar basis.':
+      'Parametrización trigonométrica de la circunferencia a lo largo de la base ortonormal del plano.',
+    'The parameter t spans one complete period [0, 2*pi) tracing the full closed circular loop once.':
+      'El parámetro t abarca un periodo completo [0, 2π) recorriendo la circunferencia cerrada una vez.',
+    'The parameter t spans one complete fundamental period [0, 2*pi) tracing the full closed elliptical loop once.':
+      'El parámetro t abarca un periodo fundamental completo [0, 2π) recorriendo la elipse cerrada una vez.',
+    'Both original surface equations are verified algebraically to hold identically across the parameter domain.':
+      'Se verifica algebraicamente que ambas ecuaciones de superficie se satisfacen idénticamente en el dominio del parámetro.',
+    'Subtracting the proportional quadratic terms eliminates degree-2 terms, yielding a planar cross-section (radical cutting plane).':
+      'Restar los términos cuadráticos proporcionales elimina los términos de segundo grado, generando una sección transversal plana (plano radical).',
+    'Algebraically solved the system for remaining coordinates.':
+      'Se resolvió algebraicamente el sistema para las coordenadas restantes.',
+    'Enforcing calculation bounds [-1000, 1000]^3 and excluding any algebraic singularities or non-real intervals.':
+      'Se aplican los límites de cálculo [-1000, 1000]³ y se excluyen singularidades algebraicas o intervalos no reales.',
+    'Both original surface equations are verified algebraically to simplify identically to zero.':
+      'Se verifica algebraicamente que ambas ecuaciones originales de las superficies se simplifican idénticamente a cero.',
+    'Verified complete global coverage without branch omission or sign-constrained loss.':
+      'Se verificó la cobertura global completa sin omisión de ramas ni pérdida por restricciones de signo.',
+  };
+
+  if (map[explanation]) return map[explanation];
+
+  // Dynamic templates
+  if (explanation.startsWith('Applied orientation reversal via exact substitution ')) {
+    return 'Se aplicó inversión de orientación mediante sustitución exacta. El dominio del parámetro se transformó correspondientemente, invirtiendo el sentido y preservando la geometría y pertenencia algebraica.';
+  }
+  if (explanation.startsWith('The cross-section along the ')) {
+    return explanation
+      .replace('The cross-section along the ', 'La sección transversal en el plano ')
+      .replace(' is an ellipse with semi-axes ', ' es una elipse con semiejes ');
+  }
+  if (explanation.startsWith('Trigonometric parameterization of the elliptic cross section with parameter t in [0, 2*pi)')) {
+    return 'Parametrización trigonométrica de la sección elíptica con parámetro t en [0, 2π).';
+  }
+  if (explanation.startsWith('Evaluating the surface relation along ')) {
+    return 'Al evaluar la relación de la superficie a lo largo de las coordenadas parametrizadas se obtiene una fórmula explícita para la coordenada restante.';
+  }
+  if (explanation.startsWith('Selected spatial coordinate ')) {
+    return explanation
+      .replace('Selected spatial coordinate ', 'Se seleccionó la coordenada espacial ')
+      .replace(' as the curve parameter variable t.', ' como variable de parámetro t de la curva.');
+  }
+  if (explanation.startsWith('Established result coverage: ')) {
+    const scope = explanation.replace('Established result coverage: ', '').replace(/\.$/, '');
+    return `Cobertura establecida del resultado: ${getLocalizedScope(scope, lang)}.`;
+  }
+  if (explanation.includes('Both original surface equations are verified algebraically to hold identically across the parameter domain. Established scope:')) {
+    return 'Ambas ecuaciones originales de superficie se verifican algebraicamente como satisfechas en todo el dominio del parámetro.';
+  }
+
+  return explanation;
+}
