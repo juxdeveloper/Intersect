@@ -645,3 +645,160 @@ export function getLocalizedStepExplanation(explanation: string, lang: Supported
 
   return explanation;
 }
+
+/**
+ * Localizes solver outcome messages (empty, degenerate, inconclusive).
+ */
+export function getLocalizedSolverMessage(message: string, lang: SupportedLanguage): string {
+  if (lang === 'en' || !message) return message;
+
+  const map: Record<string, string> = {
+    'Both equations are constant identities; intersection is all of space.':
+      'Ambas ecuaciones son identidades constantes; la intersección es todo el espacio tridimensional.',
+    'The surfaces are coincident planes (two-dimensional overlap).':
+      'Las superficies son planos coincidentes (superposición bidimensional).',
+    'The plane is tangent to the sphere at an isolated point.':
+      'El plano es tangente a la esfera en un punto aislado.',
+    'The complete intersection consists of multiple branches or disconnected components, and no single exact global parameterization could be determined.':
+      'La intersección completa consta de múltiples ramas o componentes desconectadas, y no fue posible determinar una única parametrización global exacta.',
+    'Could not determine an exact parameterization within the supported symbolic strategies.':
+      'No se pudo determinar una parametrización exacta dentro de las estrategias simbólicas admitidas.',
+    'No real intersection exists in the bounded region':
+      'No existe intersección real en la región delimitada.',
+    'Calculation was cancelled.':
+      'El cálculo fue cancelado.',
+    'Runtime initialization failed':
+      'Falló la inicialización del entorno.',
+  };
+
+  return map[message] ?? message;
+}
+
+/**
+ * Localizes solver proof explanations (for empty intersections).
+ */
+export function getLocalizedProofExplanation(proof: string, lang: SupportedLanguage): string {
+  if (lang === 'en' || !proof) return proof;
+
+  const map: Record<string, string> = {
+    'Proved no intersection exists within the calculation bounding box [-1000, 1000]^3.':
+      'Se demostró que no existe intersección dentro de la región de cálculo [-1000, 1000]³.',
+    'Proved no real intersection exists globally in R^3: the planes are parallel and distinct with non-intersecting normal spans.':
+      'Se demostró que no existe intersección real global en ℝ³: los planos son paralelos y distintos sin punto común.',
+    'Proved no real intersection exists globally in R^3: Surface F requires a sum of real squares to equal a negative number, having no real solutions.':
+      'Se demostró que no existe intersección real global en ℝ³: la Superficie F requiere que una suma de cuadrados reales sea igual a un número negativo, careciendo de soluciones reales.',
+    'Proved no real intersection exists globally in R^3: Surface G requires a sum of real squares to equal a negative number, having no real solutions.':
+      'Se demostró que no existe intersección real global en ℝ³: la Superficie G requiere que una suma de cuadrados reales sea igual a un número negativo, careciendo de soluciones reales.',
+    'Surfaces do not intersect in the real domain':
+      'Las superficies no se intersectan en el dominio real.',
+  };
+
+  if (map[proof]) return map[proof];
+
+  if (proof.includes('Proved no real intersection exists globally in R^3: Surface F equation is an algebraic contradiction')) {
+    return 'Se demostró que no existe intersección real global en ℝ³: la ecuación de la Superficie F es una contradicción algebraica.';
+  }
+  if (proof.includes('Proved no real intersection exists globally in R^3: Surface G equation is an algebraic contradiction')) {
+    return 'Se demostró que no existe intersección real global en ℝ³: la ecuación de la Superficie G es una contradicción algebraica.';
+  }
+  if (proof.includes('orthogonal distance from sphere center to plane') && proof.includes('exceeds sphere radius')) {
+    return 'Se demostró que no existe intersección real global en ℝ³: la distancia ortogonal del centro de la esfera al plano supera el radio de la esfera.';
+  }
+  if (proof.includes('sphere equation has negative radius squared')) {
+    return 'Se demostró que no existe intersección real global en ℝ³: la ecuación de la esfera tiene radio al cuadrado negativo, no conteniendo puntos reales.';
+  }
+  if (proof.includes('outside calculation bounds')) {
+    return 'Se demostró que no existe intersección dentro de los límites de cálculo: la curva queda fuera de [-1000, 1000]³.';
+  }
+
+  return proof;
+}
+
+/**
+ * Localizes mathematical scope labels.
+ */
+export function getLocalizedScope(scope: string, lang: SupportedLanguage): string {
+  if (lang === 'en' || !scope) return scope;
+
+  const map: Record<string, string> = {
+    'Single closed smooth elliptic component formed by the planar section of the cylinder':
+      'Componente elíptica suave y cerrada formada por la sección plana del cilindro',
+    'Closed periodic space ellipse':
+      'Elipse espacial periódica cerrada',
+    'Single continuous closed ellipse component':
+      'Componente elíptica cerrada continua única',
+    'Complete infinite straight line of intersection':
+      'Recta infinita completa de intersección',
+    'Single continuous circular intersection loop':
+      'Circunferencia de intersección continua cerrada',
+    'Single continuous planar space curve':
+      'Curva espacial plana continua única',
+    'Complete algebraic space curve component':
+      'Componente completa de curva algebraica espacial',
+  };
+
+  if (map[scope]) return map[scope];
+
+  if (scope.startsWith('Verified component (1 of ') && scope.includes('candidates); additional components may exist')) {
+    return 'Componente verificada (1 de varias candidatas); pueden existir componentes adicionales.';
+  }
+
+  return scope;
+}
+
+/**
+ * Localizes mathematical input diagnostics and syntax errors.
+ */
+export function getLocalizedDiagnosticMessage(
+  diagnostic: { reasonCode: string; message: string; surface?: string } | null,
+  lang: SupportedLanguage,
+): string {
+  if (!diagnostic) return '';
+  if (lang === 'en') return diagnostic.message;
+
+  const reasonCodeMap: Record<string, string> = {
+    empty_input: 'Por favor, ingresa una ecuación para la superficie.',
+    incomplete_placeholder: 'Completa los términos o signos faltantes en la ecuación.',
+    parse_error: 'Error de sintaxis matemática. Revisa los términos y signos.',
+    unknown_symbol: 'Símbolo no reconocido. Solo se admiten las variables espaciales x, y, z.',
+    reserved_symbol: "El símbolo 't' está reservado para el parámetro de la curva.",
+    unsupported_function: 'Función matemática no admitida.',
+    unsupported_construct: 'Construcción matemática no admitida (integrales, sumatorias o matrices).',
+    unsupported_operator: 'Operador matemático no admitido.',
+    malformed_equality: "Ecuación mal formada. Debe contener exactamente un signo de igualdad '='.",
+    inequality_not_supported: "Solo se admiten ecuaciones con signo de igualdad '=', no desigualdades (<, >, ≤, ≥).",
+    input_too_long: 'La ecuación excede la longitud máxima permitida.',
+    excessive_depth: 'La expresión matemática es demasiado compleja o anidada.',
+    internal_adapter_error: 'Error interno al procesar la entrada matemática.',
+  };
+
+  return reasonCodeMap[diagnostic.reasonCode] ?? diagnostic.message;
+}
+
+const LANG_STORAGE_KEY = 'intersect_lang';
+
+export function getInitialLanguage(): SupportedLanguage {
+  if (typeof window === 'undefined') return 'es';
+  try {
+    const saved = localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved === 'en' || saved === 'es') return saved;
+  } catch {
+    // LocalStorage blocked/unavailable
+  }
+  // User decision: Spanish is the default on first visit regardless of browser language
+  return 'es';
+}
+
+export function saveLanguagePreference(lang: SupportedLanguage): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, lang);
+    document.documentElement.lang = lang;
+    document.title =
+      lang === 'es'
+        ? 'Intersect — Intersección de superficies'
+        : 'Intersect — Surface intersection';
+  } catch {
+    // LocalStorage blocked/unavailable
+  }
+}
