@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Cálculo algebraico exacto y visualización 3D interactiva de la curva de intersección r(t) entre dos superficies reales en el navegador." />
+    <meta name="theme-color" content="#0c0d12" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Intersect — Intersección de superficies</title>
+    
+    <!-- PWA & Favicon -->
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <!-- Open Graph / Social Sharing -->
+    <meta property="og:title" content="Intersect — Intersección de superficies" />
+    <meta property="og:description" content="Cálculo algebraico exacto y visualización 3D interactiva de la curva de intersección r(t) entre dos superficies." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="./icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Intersect — Intersección de superficies" />
+    <meta name="twitter:description" content="Cálculo algebraico exacto y visualización 3D interactiva de la curva de intersección r(t) entre dos superficies." />
+    <meta name="twitter:image" content="./icon-512.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <div style="padding: 2rem; font-family: system-ui, sans-serif; text-align: center; color: #f2f3f7; background: #0c0d12; min-height: 100vh;">
+        <h1>Intersect</h1>
+        <p>Intersect requiere JavaScript para calcular la parametrización exacta y renderizar el espacio 3D en WebGL.</p>
+      </div>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
