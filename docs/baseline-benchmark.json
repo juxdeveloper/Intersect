@@ -1,0 +1,63 @@
+{
+  "env": {
+    "platform": "linux",
+    "arch": "x64",
+    "node": "v26.10.0",
+    "browser": "/opt/google/chrome/chrome",
+    "glRenderer": "SwiftShader (software WebGL 2.0)",
+    "mode": "production build (vite preview)"
+  },
+  "workloads": {
+    "w1_initial_shell": {
+      "shellLoadDurationMs": 3042,
+      "initialHeapMb": 17.78,
+      "initialTotalHeapMb": 29.7,
+      "requestsCount": 4,
+      "calcBtnText": "Calculate"
+    },
+    "w2_first_calculation": {
+      "totalDurationMs": 12182,
+      "formula": "r(t) = (2*sin(t), 2*cos(t), 2*sin(t) + 2*cos(t))",
+      "domain": "0 ≤ t < 2*pi",
+      "postCalcHeapMb": 18.14
+    },
+    "w3_warm_and_nonpolynomial": {
+      "warmDurationMs": 410,
+      "warmFormula": "r(t) = (3*sin(t), 3*cos(t), 3*sin(t) + 3*cos(t))",
+      "trigDurationMs": 55,
+      "trigFormula": "r(t) = (3*sin(t), 3*cos(t), 3*sin(t) + 3*cos(t))"
+    },
+    "w4_cancellation": {
+      "cancelAcknowledgedMs": 0,
+      "recoveryDurationMs": 159,
+      "recovered": true
+    },
+    "w5_animation_and_rendering": {
+      "sampleCount": 30,
+      "avgFrameMs": 49.81,
+      "maxFrameMs": 66.7,
+      "idleRafCount": 31
+    },
+    "w6_geometry": {
+      "region": "[-50, 50]^3 reference box",
+      "worldBounds": "[-1000, 1000]^3",
+      "defaultResolution": 64,
+      "draftResolution": 40
+    },
+    "w7_history": {
+      "openDurationMs": 115,
+      "itemsCount": 0,
+      "restoreDurationMs": 0
+    },
+    "w8_lifecycle_stability": {
+      "heapProgression": [
+        17.17,
+        17.34,
+        17.34,
+        18.02
+      ],
+      "finalHeapDelta": 0.85,
+      "stable": true
+    }
+  }
+}
