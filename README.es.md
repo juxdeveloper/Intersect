@@ -89,3 +89,46 @@ npm run preview
 
 La vista 3D requiere WebGL. La instalación de la PWA y los trabajadores de servicio requieren HTTPS o localhost y un navegador compatible. Una primera visita no puede funcionar sin conexión antes de almacenar los recursos en caché. Si falla la inicialización del entorno, comprueba la disponibilidad de los recursos locales y utiliza el control para reintentar; un tiempo de espera agotado o una ecuación no compatible no demuestran que la intersección esté vacía.
 
+## Alojamiento estático
+
+Sirve la carpeta completa `dist/` mediante un servidor estático; no se necesita un servidor de aplicación:
+
+```bash
+python3 -m http.server 8080 --directory dist
+```
+
+Vite utiliza `base: './'` para rutas de recursos relativas y alojamiento en subdirectorios. Mantén junta toda la distribución, incluidos `pyodide/`, `fonts/`, los trabajadores, el trabajador de servicio y el manifiesto de caché. Utiliza HTTPS para una PWA pública. Publicar este repositorio de código en GitHub no despliega la aplicación en un sitio web.
+
+## Cloudflare Pages
+
+Conecta este repositorio de GitHub a un proyecto de Cloudflare **Pages** con estos ajustes:
+
+| Ajuste | Valor |
+| --- | --- |
+| Rama de producción | `main` |
+| Configuración de framework | Vite |
+| Directorio raíz | Raíz del repositorio |
+| Comando de compilación | `npm run build` |
+| Directorio de salida | `dist` |
+| Node.js | `22.16.0`, definido en `.node-version` |
+
+Pages instala las dependencias antes de ejecutar la compilación. El archivo de bloqueo y el script de preparación proporcionan todo el entorno local; no hacen falta secretos de la aplicación, Functions ni un servidor de cálculo. `wrangler.toml` registra el directorio de salida para las herramientas de Pages. `public/_headers` mantiene actualizados el HTML, el trabajador de servicio y el manifiesto de caché, mientras conserva en caché los paquetes con nombres que identifican su contenido. Los archivos de configuración del alojamiento se excluyen del inventario de caché de la PWA.
+
+La distribución de producción debe respetar los [límites de recursos de Pages](https://developers.cloudflare.com/pages/platform/limits/): 25 MiB por archivo y 20 000 archivos en el plan Free. Ejecuta `node scripts/verify-release-credits.mjs` después de compilar para comprobar los créditos adaptables, el cálculo real sin conexión, las solicitudes del entorno y la distribución; requiere Chromium local o `CHROME_PATH`. El repositorio está preparado para desplegarse; conectar una cuenta de Cloudflare y publicar un sitio web son acciones independientes.
+
+Consulta las referencias de Cloudflare sobre [configuración de compilación](https://developers.cloudflare.com/pages/configuration/build-configuration/) e [imagen de compilación](https://developers.cloudflare.com/pages/configuration/build-image/).
+
+## Autores
+
+- **Creador y desarrollador principal:** Angel Joseph Estrada Santos ([@juxdeveloper](https://github.com/juxdeveloper)) — arquitectura, motor matemático, algoritmos 3D, flujo de estado y funciones principales.
+- **Colaborador:** Hanniel Cardoso Jaramillo ([@HannDev2](https://github.com/HannDev2)) — controles de interfaz, estilos adaptables, localización al español y documentación para usuarios.
+
+## Licencia
+
+Intersect se distribuye bajo la **Licencia Pública General de GNU v3.0 o posterior (GPL-3.0-or-later)**. Consulta los términos completos en [LICENSE](LICENSE). Los componentes de terceros conservan sus propias licencias y avisos de redistribución; consulta [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
+
+## Mantenimiento e historial de publicación
+
+Consulta la [arquitectura](docs/architecture.md), los [presupuestos de rendimiento](docs/performance-budgets.md) y [MASTER.md](MASTER.md) para conocer los detalles de implementación, las comprobaciones verificadas y las limitaciones conocidas. Algunos scripts de navegador de fases anteriores esperan controles de interfaz sustituidos; son comprobaciones históricas y no la prueba básica de la versión actual.
+
+El historial inicial de Git público es una **reconstrucción retrospectiva** del árbol de trabajo existente, creada el 3 de octubre de 2026. Sus hitos con fechas anteriores y las atribuciones de autor solicitadas organizan la publicación; no constituyen evidencia contemporánea de cuándo o por quién se desarrolló cada archivo original. La reconstrucción contiene 200 commits: 160 atribuidos al desarrollador principal y 40 al colaborador, con fechas de autor y de creación del commit coincidentes y distribuidas durante los 21 días anteriores.
