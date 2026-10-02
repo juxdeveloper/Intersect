@@ -89,3 +89,46 @@ npm run preview
 
 WebGL is required for the 3D view. PWA installation and service workers require HTTPS or localhost and browser support. A first visit cannot work offline before assets are cached. If runtime initialization fails, check local asset availability and use the retry control; a timeout or unsupported equation does not establish that an intersection is empty.
 
+## Static hosting
+
+Serve the complete `dist/` folder using a static server; no application backend is required:
+
+```bash
+python3 -m http.server 8080 --directory dist
+```
+
+Vite uses `base: './'` for relative assets and subdirectory hosting. Keep the full distribution together, including `pyodide/`, `fonts/`, workers, the service worker, and the cache manifest. Use HTTPS for a public PWA. Publishing this GitHub source repository does not deploy the application to a website.
+
+## Cloudflare Pages
+
+Connect this GitHub repository to a Cloudflare **Pages** project with these settings:
+
+| Setting | Value |
+| --- | --- |
+| Production branch | `main` |
+| Framework preset | Vite |
+| Root directory | Repository root |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Node.js | `22.16.0` from `.node-version` |
+
+Pages installs dependencies before running the build. The committed lockfile and runtime preparation script provide the full local runtime; no application secrets, Functions, or solver backend are needed. `wrangler.toml` records the output directory for Pages tooling. `public/_headers` keeps the HTML, service worker, and cache manifest fresh while caching fingerprinted bundles. Hosting control files are excluded from the PWA cache inventory.
+
+The production distribution must stay below [Pages asset limits](https://developers.cloudflare.com/pages/platform/limits/): 25 MiB per file and 20,000 files on the Free plan. Run `node scripts/verify-release-credits.mjs` after a build for the responsive credits, real offline calculation, runtime-request, and distribution checks; it requires local Chromium or `CHROME_PATH`. The repository is prepared for deployment; connecting a Cloudflare account and publishing a website are separate actions.
+
+See Cloudflare's [build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/) and [build image](https://developers.cloudflare.com/pages/configuration/build-image/) references.
+
+## Authors
+
+- **Creator & Lead Developer:** Angel Joseph Estrada Santos ([@juxdeveloper](https://github.com/juxdeveloper)) — architecture, math engine, 3D algorithms, state pipeline, and core features.
+- **Collaborator:** Hanniel Cardoso Jaramillo ([@HannDev2](https://github.com/HannDev2)) — UI controls, responsive styling, Spanish localization, and user documentation.
+
+## License
+
+Intersect is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**. See [LICENSE](LICENSE) for the full terms. Third-party components retain their own licenses and redistribution notices; see [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
+
+## Maintenance and release history
+
+See [architecture](docs/architecture.md), [performance budgets](docs/performance-budgets.md), and [MASTER.md](MASTER.md) for implementation details, verified checks, and known limitations. Some older phase-specific browser scripts expect superseded UI controls; they are historical checks rather than the current release smoke test.
+
+The initial public Git history is a **retrospective reconstruction** of the existing working tree, created on October 3, 2026. Its backdated milestones and requested author assignments organize the release; they are not contemporaneous evidence of when or by whom each original file was developed. The reconstruction contains 200 commits: 160 attributed to the lead and 40 to the collaborator, with matching author and committer timestamps distributed over the preceding 21 days.
