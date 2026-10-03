@@ -101,7 +101,15 @@ Vite uses `base: './'` for relative assets and subdirectory hosting. Keep the fu
 
 ## Cloudflare Pages
 
-Connect this GitHub repository to a Cloudflare **Pages** project with these settings:
+**Live site:** [Intersect](https://intersect-4z0.pages.dev/). The current production release was deployed with Wrangler Direct Upload. GitHub continuous deployment is not connected. To publish an updated build with an authenticated Cloudflare account:
+
+```sh
+npm ci
+npm run build
+wrangler pages deploy dist --project-name intersect --branch main
+```
+
+To configure a separate Git-connected Pages project, connect this GitHub repository to a Cloudflare **Pages** project with these settings:
 
 | Setting | Value |
 | --- | --- |
@@ -114,7 +122,7 @@ Connect this GitHub repository to a Cloudflare **Pages** project with these sett
 
 Pages installs dependencies before running the build. The committed lockfile and runtime preparation script provide the full local runtime; no application secrets, Functions, or solver backend are needed. `wrangler.toml` records the output directory for Pages tooling. `public/_headers` keeps the HTML, service worker, and cache manifest fresh while caching fingerprinted bundles. Hosting control files are excluded from the PWA cache inventory.
 
-The production distribution must stay below [Pages asset limits](https://developers.cloudflare.com/pages/platform/limits/): 25 MiB per file and 20,000 files on the Free plan. Run `node scripts/verify-release-credits.mjs` after a build for the responsive credits, real offline calculation, runtime-request, and distribution checks; it requires local Chromium or `CHROME_PATH`. The repository is prepared for deployment; connecting a Cloudflare account and publishing a website are separate actions.
+The production distribution must stay below [Pages asset limits](https://developers.cloudflare.com/pages/platform/limits/): 25 MiB per file and 20,000 files on the Free plan. Run `node scripts/verify-release-credits.mjs` after a build for the responsive credits, real offline calculation, runtime-request, and distribution checks; it requires local Chromium or `CHROME_PATH`. The current Direct Upload deployment is verified; these settings also document how to reproduce the build for another Pages project.
 
 See Cloudflare's [build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/) and [build image](https://developers.cloudflare.com/pages/configuration/build-image/) references.
 

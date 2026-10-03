@@ -101,7 +101,15 @@ Vite utiliza `base: './'` para rutas de recursos relativas y alojamiento en subd
 
 ## Cloudflare Pages
 
-Conecta este repositorio de GitHub a un proyecto de Cloudflare **Pages** con estos ajustes:
+**Sitio publicado:** [Intersect](https://intersect-4z0.pages.dev/). La versión de producción actual se desplegó mediante Direct Upload con Wrangler. El despliegue continuo desde GitHub no está conectado. Para publicar una compilación actualizada con una cuenta de Cloudflare autenticada:
+
+```sh
+npm ci
+npm run build
+wrangler pages deploy dist --project-name intersect --branch main
+```
+
+Para configurar otro proyecto de Pages conectado a Git, conecta este repositorio de GitHub a un proyecto de Cloudflare **Pages** con estos ajustes:
 
 | Ajuste | Valor |
 | --- | --- |
@@ -114,7 +122,7 @@ Conecta este repositorio de GitHub a un proyecto de Cloudflare **Pages** con est
 
 Pages instala las dependencias antes de ejecutar la compilación. El archivo de bloqueo y el script de preparación proporcionan todo el entorno local; no hacen falta secretos de la aplicación, Functions ni un servidor de cálculo. `wrangler.toml` registra el directorio de salida para las herramientas de Pages. `public/_headers` mantiene actualizados el HTML, el trabajador de servicio y el manifiesto de caché, mientras conserva en caché los paquetes con nombres que identifican su contenido. Los archivos de configuración del alojamiento se excluyen del inventario de caché de la PWA.
 
-La distribución de producción debe respetar los [límites de recursos de Pages](https://developers.cloudflare.com/pages/platform/limits/): 25 MiB por archivo y 20 000 archivos en el plan Free. Ejecuta `node scripts/verify-release-credits.mjs` después de compilar para comprobar los créditos adaptables, el cálculo real sin conexión, las solicitudes del entorno y la distribución; requiere Chromium local o `CHROME_PATH`. El repositorio está preparado para desplegarse; conectar una cuenta de Cloudflare y publicar un sitio web son acciones independientes.
+La distribución de producción debe respetar los [límites de recursos de Pages](https://developers.cloudflare.com/pages/platform/limits/): 25 MiB por archivo y 20 000 archivos en el plan Free. Ejecuta `node scripts/verify-release-credits.mjs` después de compilar para comprobar los créditos adaptables, el cálculo real sin conexión, las solicitudes del entorno y la distribución; requiere Chromium local o `CHROME_PATH`. El despliegue actual mediante Direct Upload está verificado; estos ajustes también documentan cómo reproducir la compilación para otro proyecto de Pages.
 
 Consulta las referencias de Cloudflare sobre [configuración de compilación](https://developers.cloudflare.com/pages/configuration/build-configuration/) e [imagen de compilación](https://developers.cloudflare.com/pages/configuration/build-image/).
 
