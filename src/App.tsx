@@ -125,7 +125,6 @@ export const App: React.FC = () => {
     deleteRecord: deleteHistoryRecord,
     clearAllHistory,
     clearNotice: clearHistoryNotice,
-    setActiveRecordId,
   } = useHistory();
 
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
@@ -759,36 +758,6 @@ export const App: React.FC = () => {
     [submittedCalc.result, submittedCalc.savedRecordId, updateHistoryAppearance],
   );
 
-  // Load reference example handler
-  const handleLoadExample = useCallback(() => {
-    setSurfaceF('x^2 + y^2 = 4');
-    setSurfaceG('z = x + y');
-    setDebouncedSurfaceF('x^2 + y^2 = 4');
-    setDebouncedSurfaceG('z = x + y');
-    setDirection('forward');
-    setActiveCurveColor(DEFAULT_CURVE_PALETTE_COLOR);
-    setFDiagnostic(null);
-    setGDiagnostic(null);
-    setActiveRecordId(null);
-    const newId = Date.now();
-    setSubmittedCalc({
-      surfaceF: 'x^2 + y^2 = 4',
-      surfaceG: 'z = x + y',
-      direction: 'forward',
-      calculationId: newId,
-      result: sampleVerifiedResult,
-      isExample: true,
-      curveColor: DEFAULT_CURVE_PALETTE_COLOR,
-      savedRecordId: null,
-    });
-    setRenderRegion({
-      x: { min: -50, max: 50 },
-      y: { min: -50, max: 50 },
-      z: { min: -50, max: 50 },
-    });
-    setStatusFeedback(null);
-  }, [sampleVerifiedResult, setActiveRecordId]);
-
   // Handle committed curve color change and sync to history
   const handleCurveColorChange = useCallback(
     (newColor: string) => {
@@ -1019,17 +988,6 @@ export const App: React.FC = () => {
             lang={lang}
           />
 
-          {/* Load Reference Example Helper */}
-          <div className="example-loader-bar">
-            <button
-              type="button"
-              className="example-link-btn"
-              onClick={handleLoadExample}
-              title={t.inputs.loadExample}
-            >
-              {t.inputs.loadExample}
-            </button>
-          </div>
           <Credits lang={lang} />
         </div>
       </aside>

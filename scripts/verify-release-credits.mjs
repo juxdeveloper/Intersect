@@ -101,6 +101,8 @@ try {
   await page.waitForSelector('canvas');
   assert.equal(await page.$eval('#quality-toggle-btn', (el) => el.textContent.trim()), 'Detalle: Auto');
   assert.equal(await page.$eval('html', (el) => el.lang), 'es');
+  assert.equal(await page.$('.example-loader-bar'), null, 'Reference reset text must be absent');
+  assert.equal(await page.$('.graph-gesture-hint'), null, 'Gesture hint must be absent');
   const spanish = await page.$eval('.app-credits', (el) => el.textContent);
   assert(spanish.includes('Creado y desarrollado por Angel Joseph Estrada Santos (@juxdeveloper)'));
   assert(spanish.includes('Colaborador: Hanniel Cardoso Jaramillo (@HannDev2)'));
@@ -217,6 +219,16 @@ try {
     await page.setViewport({ width, height: 844, isMobile: width === 390, hasTouch: width === 390 });
     await waitForGeometry();
     await page.$eval('.app-credits', (el) => el.scrollIntoView());
+    const profiles = await page.$eval('.credits-links', (row) => {
+      const [github, instagram] = row.querySelectorAll('a');
+      const left = github.getBoundingClientRect();
+      const right = instagram.getBoundingClientRect();
+      return { github: github.href, instagram: instagram.href, left: left.right, right: right.left,
+        sameRow: Math.abs(left.top - right.top) < 1 };
+    });
+    assert(profiles.sameRow && profiles.right > profiles.left, `Instagram must sit to the right of GitHub at ${width}px`);
+    assert.equal(profiles.github, 'https://github.com/juxdeveloper');
+    assert.equal(profiles.instagram, 'https://www.instagram.com/juxdeveloper/');
     const layout = await page.$eval('.app-credits', (el) => {
       const box = el.getBoundingClientRect();
       return { width: box.width, left: box.left, right: box.right, overflow: el.scrollWidth > el.clientWidth,

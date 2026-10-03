@@ -24,9 +24,14 @@ export function Credits({ lang }: { lang: SupportedLanguage }) {
     <p className="credits-person">
       <span className="credits-role">{t.creator} </span>
       <strong>Angel Joseph Estrada Santos </strong>
-      <a className="credits-profile" href="https://github.com/juxdeveloper" target="_blank" rel="noopener noreferrer" aria-label="Angel Joseph Estrada Santos · GitHub @juxdeveloper">
-        <GithubMark />(@juxdeveloper)<ArrowUpRight size={11} />
-      </a>
+      <span className="credits-links">
+        <a className="credits-profile" href="https://github.com/juxdeveloper" target="_blank" rel="noopener noreferrer" aria-label="Angel Joseph Estrada Santos · GitHub @juxdeveloper">
+          <GithubMark />(@juxdeveloper)<ArrowUpRight size={11} />
+        </a>
+        <a className="credits-social" href="https://www.instagram.com/juxdeveloper/" target="_blank" rel="noopener noreferrer" aria-label="Instagram @juxdeveloper">
+          <InstagramMark /><span>@juxdeveloper</span><ArrowUpRight size={11} />
+        </a>
+      </span>
     </p>
     <p className="credits-person">
       <span className="credits-role">{t.collaborator}: </span>
@@ -36,9 +41,6 @@ export function Credits({ lang }: { lang: SupportedLanguage }) {
       </a>
     </p>
     <div className="credits-bottom">
-      <a className="credits-social" href="https://www.instagram.com/juxdeveloper/" target="_blank" rel="noopener noreferrer" aria-label="Instagram @juxdeveloper">
-        <InstagramMark /><span>@juxdeveloper</span><ArrowUpRight size={11} />
-      </a>
       <a className="credits-license" href="./LICENSE" target="_blank" rel="noopener noreferrer" aria-label={t.license} title={t.license}>
         <Scale size={12} aria-hidden="true" /><span>GPL 3.0+</span>
       </a>

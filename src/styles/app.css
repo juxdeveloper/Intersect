@@ -77,6 +77,13 @@
   margin: 0 0 10px;
 }
 
+.credits-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .credits-role {
   display: block;
   font-size: 10px;
@@ -115,7 +122,7 @@
 .credits-bottom {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
   border-top: 1px solid var(--border-subtle);
@@ -411,28 +418,6 @@ math-field.intersect-mathfield::part(menu-toggle) {
 
 .curve-card.is-stale-draft {
   border-color: rgba(251, 191, 36, 0.3);
-}
-
-.example-loader-bar {
-  display: flex;
-  justify-content: center;
-  margin-top: 6px;
-  padding: 4px 0;
-}
-
-.example-link-btn {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.example-link-btn:hover {
-  color: var(--text-primary);
 }
 
 /* Direction Toggle */
@@ -1265,18 +1250,6 @@ math-field.intersect-mathfield::part(menu-toggle) {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   display: inline-block;
-}
-
-/* Subtle gesture hint */
-.graph-gesture-hint {
-  position: absolute;
-  bottom: 12px;
-  right: 18px;
-  z-index: 5;
-  font-size: 0.72rem;
-  color: rgba(142, 149, 176, 0.6);
-  pointer-events: none;
-  user-select: none;
 }
 
 /* Fallback card if WebGL unavailable */

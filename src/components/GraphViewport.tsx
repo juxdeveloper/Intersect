@@ -259,11 +259,6 @@ export const GraphViewport: React.FC<GraphViewportProps> = ({
           </button>
         </div>
 
-        {/* Subtle Gesture Hint */}
-        <div className="graph-gesture-hint" aria-hidden="true">
-          <span>{t.viewport.orbitHint}</span>
-        </div>
-
         {/* Screen Reader Announcement */}
         <div className="sr-only" aria-live="polite">
           {screenReaderSummary}

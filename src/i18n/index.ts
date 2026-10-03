@@ -53,7 +53,6 @@ export interface Translations {
     calculate: string;
     calculating: string;
     cancel: string;
-    loadExample: string;
     loadingSymPy: string;
     loadingPyodide: string;
     solving: string;
@@ -86,7 +85,6 @@ export interface Translations {
     legendG: string;
     legendCurve: string;
     legendAria: string;
-    orbitHint: string;
     generatingGeometry: string;
     webglNotSupported: string;
     webglRequired: string;
@@ -213,7 +211,6 @@ export const translations: Record<SupportedLanguage, Translations> = {
       calculate: 'Calcular',
       calculating: 'Calculando...',
       cancel: 'Cancelar',
-      loadExample: 'Restablecer al ejemplo de referencia (x² + y² = 4 & z = x + y)',
       loadingSymPy: 'Cargando SymPy...',
       loadingPyodide: 'Cargando Pyodide...',
       solving: 'Resolviendo...',
@@ -246,7 +243,6 @@ export const translations: Record<SupportedLanguage, Translations> = {
       legendG: 'Superficie G',
       legendCurve: 'Curva de intersección',
       legendAria: 'Leyenda del gráfico',
-      orbitHint: 'Arrastrar para rotar • Mayús+arrastrar para desplazar • Rueda para zoom',
       generatingGeometry: 'Generando geometría 3D...',
       webglNotSupported: 'WebGL no compatible',
       webglRequired: 'Se requiere WebGL para la visualización 3D.',
@@ -371,7 +367,6 @@ export const translations: Record<SupportedLanguage, Translations> = {
       calculate: 'Calculate',
       calculating: 'Calculating...',
       cancel: 'Cancel',
-      loadExample: 'Reset to reference example (x² + y² = 4 & z = x + y)',
       loadingSymPy: 'Loading SymPy...',
       loadingPyodide: 'Loading Pyodide...',
       solving: 'Solving...',
@@ -404,7 +399,6 @@ export const translations: Record<SupportedLanguage, Translations> = {
       legendG: 'Surface G',
       legendCurve: 'Intersection curve',
       legendAria: 'Graph legend',
-      orbitHint: 'Drag to orbit • Shift+drag to pan • Scroll to zoom',
       generatingGeometry: 'Generating 3D geometry...',
       webglNotSupported: 'WebGL Not Supported',
       webglRequired: 'WebGL is required for 3D visualization.',
