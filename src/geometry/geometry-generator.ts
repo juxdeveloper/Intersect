@@ -13,12 +13,15 @@ import {
 } from '../contracts/geometry';
 import { extractImplicitSurface } from './marching-cubes';
 import { sampleExactCurve } from './curve-sampler';
+import { autoGeometryBudget } from './view-detail';
 
 /**
  * Resolves the effective GeometryBudget from the requested preset and custom overrides.
  */
 export function resolveGeometryBudget(request: GeometryRequest): GeometryBudget {
-  const basePreset = GEOMETRY_BUDGET_PRESETS[request.quality] ?? GEOMETRY_BUDGET_PRESETS.default;
+  const basePreset = request.quality === 'auto'
+    ? autoGeometryBudget(request.view)
+    : GEOMETRY_BUDGET_PRESETS[request.quality] ?? GEOMETRY_BUDGET_PRESETS.default;
   if (!request.customBudget) {
     return basePreset;
   }

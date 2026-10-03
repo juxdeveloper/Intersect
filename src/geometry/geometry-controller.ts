@@ -296,21 +296,9 @@ export class GeometryController {
     if (!this.activeJobId) return;
 
     this.clearActiveTimeout();
-    const jobId = this.activeJobId;
-
-    if (this.worker) {
-      const cancelMsg: GeometryWorkerRequest = {
-        type: 'cancel-geometry',
-        jobId,
-        reason,
-      };
-      try {
-        this.worker.postMessage(cancelMsg);
-      } catch {
-        // Fallback: force terminate if message fails
-        this.terminateAndRespawnWorker();
-      }
-    }
+    // Meshing is synchronous inside the worker. A queued cancellation message
+    // cannot interrupt it; terminating prevents obsolete zoom jobs accumulating.
+    this.terminateAndRespawnWorker();
 
     const rejecter = this.activeRejecter;
     this.activeResolver = null;

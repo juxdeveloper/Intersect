@@ -178,10 +178,13 @@ describe('Intersect V6 Geometry Controller & Worker Integration Suite', () => {
 
     // Launch job 1 (waiting for worker response)
     const promise1 = controller.requestGeometry(req1);
+    const supersededWorker = mockWorkerInstance as unknown as MockGeometryWorker;
     expect(controller.getSnapshot().activeJobId).toBe('job-p1');
 
     // Launch job 2: supersedes job 1 immediately
     const promise2 = controller.requestGeometry(req2);
+    expect(supersededWorker!.terminated).toBe(true);
+    expect(mockWorkerInstance).not.toBe(supersededWorker);
     expect(controller.getSnapshot().activeJobId).toBe('job-p2');
 
     // Job 1 rejects due to cancellation/preemption
@@ -244,6 +247,7 @@ describe('Intersect V6 Geometry Controller & Worker Integration Suite', () => {
     const promise = controller.requestGeometry(req);
 
     controller.cancelCurrentJob('User cancelled test');
+    expect(mockWorkerInstance!.terminated).toBe(true);
 
     await expect(promise).rejects.toThrow(/cancelled/i);
     expect(controller.getSnapshot().state).toBe('cancelled');

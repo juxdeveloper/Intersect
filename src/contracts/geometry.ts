@@ -25,7 +25,16 @@ import type { ExactCurve, TraversalDirection, CurveTraversalMetadata } from './c
 
 export const GEOMETRY_PROTOCOL_VERSION = '1.0.0';
 
-export type GeometryQualityPreset = 'low' | 'medium' | 'high' | 'draft' | 'default' | 'ultra';
+export type GeometryQualityPreset = 'auto' | 'low' | 'medium' | 'high' | 'draft' | 'default' | 'ultra';
+
+/** Serializable camera metrics; geometry workers do not depend on Three.js. */
+export interface GeometryView {
+  readonly target: { readonly x: number; readonly y: number; readonly z: number };
+  readonly distance: number;
+  readonly verticalFov: number;
+  readonly aspect: number;
+  readonly viewportHeight: number;
+}
 
 export interface GeometryBudget {
   /** Grid cells per dimension for implicit surface marching cubes (e.g. 32, 64, 80, 100) */
@@ -45,6 +54,15 @@ export interface GeometryBudget {
 }
 
 export const GEOMETRY_BUDGET_PRESETS: Record<GeometryQualityPreset, GeometryBudget> = {
+  auto: {
+    gridResolution: 144,
+    maxVerticesPerMesh: 1_000_000,
+    maxTrianglesPerMesh: 2_000_000,
+    maxCurveSamples: 24_000,
+    maxCurveSubdivisionDepth: 17,
+    curveGeometricTolerance: 0.001,
+    maxDurationMs: 20_000,
+  },
   low: {
     gridResolution: 56,
     maxVerticesPerMesh: 200_000,
@@ -142,6 +160,7 @@ export interface GeometryRequest {
   /** Requested finite render view region, e.g. [-50, 50]^3 */
   readonly renderRegion: WorldBounds;
   readonly quality: GeometryQualityPreset;
+  readonly view?: GeometryView;
   readonly customBudget?: Partial<GeometryBudget>;
 }
 

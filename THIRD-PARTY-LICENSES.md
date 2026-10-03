@@ -12,7 +12,7 @@ This document provides a complete inventory of all open-source libraries, runtim
 | **CPython** | 3.12.7 | Python standard library & WASM binary | PSF-2.0 | Python Software Foundation | `public/pyodide/LICENSES.txt` & `dist/pyodide/LICENSES.txt` |
 | **SymPy** | 1.13.3 | Pure-Python symbolic algebra library | BSD-3-Clause | SymPy Development Team | `public/pyodide/LICENSES.txt` & `dist/pyodide/LICENSES.txt` |
 | **mpmath** | 1.3.0 | Arbitrary-precision floating-point arithmetic | BSD-3-Clause | Fredrik Johansson and mpmath contributors | `public/pyodide/LICENSES.txt` & `dist/pyodide/LICENSES.txt` |
-| **Three.js** | 0.186.1 | WebGL 3D rendering and OrbitControls | MIT | Copyright © 2010-2026 Three.js authors | Bundled in `dist/assets/three-vendor-*.js` |
+| **Three.js** | 0.186.1 | WebGL 3D rendering, OrbitControls, and Marching Cubes lookup data | MIT | Copyright © 2010-2026 Three.js authors | Bundled in `dist/assets/three-vendor-*.js`; lookup data in `src/geometry/marching-cubes-tables.ts` and the geometry worker |
 | **MathLive** | 0.110.0 | LaTeX math formula input & virtual keyboard | MIT | Copyright © 2017-present Arno Gourdol | Bundled in `dist/assets/mathlive-vendor-*.js` |
 | **KaTeX Fonts** | 20 .woff2 files | Math typography for MathLive keyboard | SIL OFL-1.1 | Copyright © 2013-2020 Khan Academy | `public/fonts/LICENSES.txt` & `dist/fonts/LICENSES.txt` |
 | **Compute Engine**| 0.136.2 | MathJSON expression parsing and manipulation | MIT | Copyright © 2019-present CortexJS / Arno Gourdol | Bundled in `dist/assets/compute-engine-vendor-*.js` |
