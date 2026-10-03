@@ -1,6 +1,7 @@
 .app-container {
   display: flex;
-  height: 100vh;
+  height: calc(100vh - var(--math-keyboard-height, 0px));
+  height: calc(100dvh - var(--math-keyboard-height, 0px));
   width: 100vw;
   overflow: hidden;
   background-color: var(--bg-app);
@@ -28,7 +29,7 @@
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   overflow-y: auto;
   box-shadow: var(--shadow-panel);
   z-index: 10;
@@ -1486,8 +1487,8 @@ math-field.intersect-mathfield::part(menu-toggle) {
   .app-container {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    height: 100dvh;
+    height: calc(100vh - var(--math-keyboard-height, 0px));
+    height: calc(100dvh - var(--math-keyboard-height, 0px));
     overflow-y: auto;
     overflow-x: hidden;
   }
@@ -1895,4 +1896,65 @@ math-field.intersect-mathfield::part(menu-toggle) {
 .history-row-delete-btn:focus-visible {
   outline: 2px solid #f87171;
   outline-offset: -2px;
+}
+
+/* Scroll the actual MathLive content, including read-only result formulas. */
+math-field.intersect-mathfield,
+math-field.result-math-field {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  touch-action: pan-x;
+}
+math-field.intersect-mathfield::part(container),
+math-field.result-math-field::part(container) {
+  min-width: 0;
+  pointer-events: auto;
+  touch-action: pan-x;
+}
+math-field.intersect-mathfield::part(content),
+math-field.result-math-field::part(content) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+math-field.result-math-field::part(virtual-keyboard-toggle),
+math-field.result-math-field::part(menu-toggle) {
+  display: none;
+}
+.curve-equation, .curve-domain, .derivation-step-formula {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+}
+/* Read-only formulas scroll as a whole, without the editor moving its caret. */
+math-field.result-math-field {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+math-field.result-math-field::part(content) {
+  overflow: visible;
+}
+.math-keyboard-host {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  z-index: 1000;
+  pointer-events: none;
+  --keyboard-padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.math-keyboard-host > .ML__keyboard {
+  position: fixed;
+  inset: 0;
+  height: 100%;
+}
+.math-keyboard-host .MLK__backdrop {
+  height: calc(var(--_keyboard-height) + var(--_padding-top) + var(--_padding-bottom));
 }

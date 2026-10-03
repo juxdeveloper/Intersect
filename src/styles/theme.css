@@ -53,7 +53,6 @@
   --shadow-panel: 4px 0 24px rgba(0, 0, 0, 0.4);
 
   /* MathLive Virtual Keyboard Theming Tokens */
-  --ML__static-fonts: true;
   --keyboard-background: #13141b;
   --keyboard-border: #242634;
   --keyboard-toolbar-background: #181922;
@@ -144,14 +143,24 @@
   padding: 0;
 }
 
+/* The application owns scrolling; keyboard focus must not move the document. */
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
+  position: fixed;
+  inset: 0;
   font-family: var(--font-sans);
   background-color: var(--bg-app);
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   overflow-x: hidden;
 }
 

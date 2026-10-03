@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import '../mathlive/setup';
 import type { MathfieldElement } from '../mathlive/setup';
+import { registerKeyboardField, showKeyboard, toggleKeyboard } from '../mathlive/keyboard';
 import type { EquationDiagnostic } from '../contracts/expressions';
 import { translations, getLocalizedDiagnosticMessage, type SupportedLanguage } from '../i18n';
 
@@ -41,6 +42,8 @@ export const MathFieldInput = forwardRef<MathFieldInputHandle, MathFieldInputPro
     const t = translations[lang] ?? translations.es;
     const mathFieldRef = useRef<MathfieldElement | null>(null);
     const lastEmittedValueRef = useRef<string>(value);
+    const callbacksRef = useRef({ onChange, onSubmit });
+    callbacksRef.current = { onChange, onSubmit };
     const [isKeyboardActive, setIsKeyboardActive] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
 
@@ -74,168 +77,48 @@ export const MathFieldInput = forwardRef<MathFieldInputHandle, MathFieldInputPro
       }
     }, [value]);
 
-    // Setup element listeners and lifecycle
+    // Register each editor once; React value updates must not reset keyboard focus.
     useEffect(() => {
       const mf = mathFieldRef.current;
       if (!mf) return;
-
-      // Guarantee initial value is populated on mount
-      if (mf.value !== value) {
-        mf.setValue(value, { silenceNotifications: true });
-        lastEmittedValueRef.current = value;
-      }
-
-      // Explicitly set manual policy so physical keyboard users don't get unwanted popups
-      mf.mathVirtualKeyboardPolicy = 'manual';
-
-      const handleInput = (e: Event) => {
-        const target = e.target as MathfieldElement;
-        const currentLatex = target.value;
-        lastEmittedValueRef.current = currentLatex;
-        onChange(currentLatex);
+      const updateStatus = () => {
+        const focused = document.activeElement === mf;
+        setIsFocused(focused);
+        setIsKeyboardActive(focused && window.mathVirtualKeyboard.visible);
       };
-
-      const handleKeyDown = (e: KeyboardEvent) => {
-        // Submit on Enter key if not composing with IME
-        if (e.key === 'Enter' && !e.isComposing) {
-          e.preventDefault();
-          if (onSubmit) {
-            onSubmit();
-          }
+      const unregister = registerKeyboardField(mf, updateStatus);
+      const handleInput = () => {
+        lastEmittedValueRef.current = mf.value;
+        callbacksRef.current.onChange(mf.value);
+      };
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Enter' && !event.isComposing) {
+          event.preventDefault();
+          callbacksRef.current.onSubmit?.();
         }
       };
-
-      const updateKeyboardStatus = () => {
-        if (
-          typeof window !== 'undefined' &&
-          'mathVirtualKeyboard' in window &&
-          window.mathVirtualKeyboard
-        ) {
-          const kbdVisible = Boolean(window.mathVirtualKeyboard.visible);
-          const hasFieldFocus = document.activeElement === mf || mf.matches(':focus-within');
-          setIsKeyboardActive(kbdVisible && hasFieldFocus);
+      const handleFocus = () => {
+        if (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) {
+          showKeyboard(mf);
         }
+        updateStatus();
       };
-
-      const handleFocusIn = () => {
-        setIsFocused(true);
-        // On mobile / touch device, auto-show the math virtual keyboard just like mobile apps
-        const isTouch =
-          typeof window !== 'undefined' &&
-          (window.matchMedia('(pointer: coarse)').matches ||
-            'ontouchstart' in window ||
-            navigator.maxTouchPoints > 0);
-        if (
-          isTouch &&
-          typeof window !== 'undefined' &&
-          'mathVirtualKeyboard' in window &&
-          window.mathVirtualKeyboard
-        ) {
-          window.mathVirtualKeyboard.show();
-        }
-        updateKeyboardStatus();
-      };
-
-      const handleFocusOut = () => {
-        setIsFocused(false);
-        setIsKeyboardActive(false);
-
-        // Delay to check if focus moved to virtual keyboard or related button
-        setTimeout(() => {
-          const active = document.activeElement;
-          const isStillInMathfield =
-            active?.tagName === 'MATH-FIELD' || active?.closest('math-field');
-          const isInsideKbd =
-            active?.closest('.ML__keyboard') || active?.closest('mathlive-virtual-keyboard');
-          if (!isStillInMathfield && !isInsideKbd) {
-            if (
-              typeof window !== 'undefined' &&
-              'mathVirtualKeyboard' in window &&
-              window.mathVirtualKeyboard?.visible
-            ) {
-              window.mathVirtualKeyboard.hide();
-            }
-          }
-        }, 120);
-      };
-
-      const handleGlobalPointerDown = (e: PointerEvent) => {
-        const target = e.target as HTMLElement | null;
-        if (!target) return;
-        // If click is outside this mathfield and not inside virtual keyboard or toggle button
-        const isInsideField = mf.contains(target) || target.closest('math-field');
-        const isInsideToggle = target.closest('.keyboard-icon-btn');
-        const isInsideKbd =
-          target.closest('.ML__keyboard') || target.closest('mathlive-virtual-keyboard');
-
-        if (!isInsideField && !isInsideToggle && !isInsideKbd) {
-          if (
-            typeof window !== 'undefined' &&
-            'mathVirtualKeyboard' in window &&
-            window.mathVirtualKeyboard?.visible
-          ) {
-            window.mathVirtualKeyboard.hide();
-            setIsKeyboardActive(false);
-          }
-        }
-      };
-
       mf.addEventListener('input', handleInput);
       mf.addEventListener('keydown', handleKeyDown);
-      mf.addEventListener('focusin', handleFocusIn);
-      mf.addEventListener('focusout', handleFocusOut);
-      document.addEventListener('pointerdown', handleGlobalPointerDown);
-
-      // Listen to geometry changes on the virtual keyboard singleton
-      const handleGeometryChange = () => {
-        updateKeyboardStatus();
-      };
-
-      if (
-        typeof window !== 'undefined' &&
-        'mathVirtualKeyboard' in window &&
-        window.mathVirtualKeyboard
-      ) {
-        window.mathVirtualKeyboard.addEventListener('geometrychange', handleGeometryChange);
-      }
-
+      mf.addEventListener('focusin', handleFocus);
+      mf.addEventListener('focusout', updateStatus);
       return () => {
         mf.removeEventListener('input', handleInput);
         mf.removeEventListener('keydown', handleKeyDown);
-        mf.removeEventListener('focusin', handleFocusIn);
-        mf.removeEventListener('focusout', handleFocusOut);
-        document.removeEventListener('pointerdown', handleGlobalPointerDown);
-        if (
-          typeof window !== 'undefined' &&
-          'mathVirtualKeyboard' in window &&
-          window.mathVirtualKeyboard
-        ) {
-          window.mathVirtualKeyboard.removeEventListener('geometrychange', handleGeometryChange);
-        }
+        mf.removeEventListener('focusin', handleFocus);
+        mf.removeEventListener('focusout', updateStatus);
+        unregister();
       };
-    }, [onChange, onSubmit, value]);
+    }, []);
 
-    // Handle virtual keyboard toggle button click
-    const handleToggleVirtualKeyboard = (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const mf = mathFieldRef.current;
-      if (!mf) return;
-
-      if (typeof window === 'undefined' || !('mathVirtualKeyboard' in window)) return;
-      const kbd = window.mathVirtualKeyboard;
-
-      const hasFieldFocus = document.activeElement === mf || mf.matches(':focus-within');
-
-      if (kbd.visible && hasFieldFocus) {
-        kbd.hide();
-        setIsKeyboardActive(false);
-      } else {
-        mf.focus();
-        kbd.show();
-        setIsKeyboardActive(true);
-      }
+    const handleToggleVirtualKeyboard = (event: React.MouseEvent) => {
+      event.preventDefault();
+      if (mathFieldRef.current) toggleKeyboard(mathFieldRef.current);
     };
 
     const hasError = Boolean(diagnostic);
@@ -266,6 +149,7 @@ export const MathFieldInput = forwardRef<MathFieldInputHandle, MathFieldInputPro
             id={id}
             ref={mathFieldRef}
             class="intersect-mathfield"
+            inputMode="none"
             placeholder={placeholder}
             aria-label={`${t.inputs.mathEquationAria} ${label}`}
             aria-invalid={hasError}
@@ -277,6 +161,7 @@ export const MathFieldInput = forwardRef<MathFieldInputHandle, MathFieldInputPro
           <button
             type="button"
             className={`keyboard-icon-btn ${isKeyboardActive ? 'is-active' : ''}`}
+            onPointerDown={(event) => event.preventDefault()}
             onClick={handleToggleVirtualKeyboard}
             aria-label={
               isKeyboardActive
