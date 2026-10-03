@@ -23,7 +23,7 @@ import { useGeometry } from './geometry';
 import { parseMathInput } from './math';
 import { prepareSurfaceEquation } from './math/pipeline';
 import { createSymbolNode } from './math/ast';
-import type { GeometryRequest } from './contracts/geometry';
+import type { GeometryRequest, GeometryView } from './contracts/geometry';
 import {
   DEFAULT_CURVE_PALETTE_COLOR,
   getNextDefaultCurveColor,
@@ -141,7 +141,8 @@ export const App: React.FC = () => {
     y: { min: -50, max: 50 },
     z: { min: -50, max: 50 },
   });
-  const [geometryQuality, setGeometryQuality] = useState<QualityLevel>('high');
+  const [geometryQuality, setGeometryQuality] = useState<QualityLevel>('auto');
+  const [geometryView, setGeometryView] = useState<GeometryView>();
 
   // Diagnostics and validation
   const [fDiagnostic, setFDiagnostic] = useState<EquationDiagnostic | null>(null);
@@ -465,7 +466,7 @@ export const App: React.FC = () => {
     const shouldDrawCurve = !isDraftDirty && activeCurve && activeCurve.traversal;
 
     return {
-      jobId: `geom-${debouncedSurfaceF}-${debouncedSurfaceG}-${submittedCalc.calculationId}-${direction}-${renderRegion.x.min}_${renderRegion.x.max}-${geometryQuality}-${shouldDrawCurve ? 'with-curve' : 'no-curve'}`,
+      jobId: `geom-${debouncedSurfaceF}-${debouncedSurfaceG}-${submittedCalc.calculationId}-${direction}-${JSON.stringify(renderRegion)}-${geometryView?.distance}-${geometryQuality}-${shouldDrawCurve ? 'with-curve' : 'no-curve'}`,
       calculationId: String(submittedCalc.calculationId),
       workerGeneration: 1,
       surfaceF: {
@@ -494,7 +495,9 @@ export const App: React.FC = () => {
         z: { min: -1000, max: 1000 },
       },
       renderRegion,
-      quality: geometryQuality,
+      // Low deliberately preserves the former High budget and fixed minimum region.
+      quality: geometryQuality === 'low' ? 'high' : 'auto',
+      view: geometryView,
     };
   }, [
     debouncedSurfaceF,
@@ -507,6 +510,7 @@ export const App: React.FC = () => {
     activeCurve,
     renderRegion,
     geometryQuality,
+    geometryView,
   ]);
 
   useEffect(() => {
@@ -1040,6 +1044,7 @@ export const App: React.FC = () => {
         geometryResult={geometryResult}
         isGeometryGenerating={isGeometryGenerating}
         onRegionChange={setRenderRegion}
+        onViewChange={setGeometryView}
         quality={geometryQuality}
         onQualityChange={setGeometryQuality}
         lang={lang}

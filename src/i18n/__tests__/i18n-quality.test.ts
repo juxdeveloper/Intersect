@@ -67,7 +67,7 @@ describe('Localization & Quality Presets Verification', () => {
     expect(enDiag).toBe('Surface F equation cannot be empty.');
   });
 
-  it('defines 3 distinct detail presets: low, medium, and high with high as the peak quality preset', () => {
+  it('preserves legacy geometry budgets for existing internal requests', () => {
     expect(GEOMETRY_BUDGET_PRESETS.low).toBeDefined();
     expect(GEOMETRY_BUDGET_PRESETS.medium).toBeDefined();
     expect(GEOMETRY_BUDGET_PRESETS.high).toBeDefined();
@@ -92,13 +92,12 @@ describe('Localization & Quality Presets Verification', () => {
     expect(high.maxCurveSamples).toBeGreaterThanOrEqual(14000);
   });
 
-  it('has localized labels for the 3 detail levels', () => {
+  it('localizes only Auto and Low in the public detail control', () => {
+    expect(translations.es.viewport.detailAuto).toBe('Auto');
     expect(translations.es.viewport.detailLow).toBe('Bajo');
-    expect(translations.es.viewport.detailMedium).toBe('Medio');
-    expect(translations.es.viewport.detailHigh).toBe('Alto');
-
+    expect(translations.en.viewport.detailAuto).toBe('Auto');
     expect(translations.en.viewport.detailLow).toBe('Low');
-    expect(translations.en.viewport.detailMedium).toBe('Medium');
-    expect(translations.en.viewport.detailHigh).toBe('High');
+    expect(translations.en.viewport).not.toHaveProperty('detailMedium');
+    expect(translations.en.viewport).not.toHaveProperty('detailHigh');
   });
 });

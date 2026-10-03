@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { GeometryResult } from '../contracts/geometry';
+import type { GeometryResult, GeometryView } from '../contracts/geometry';
 import type { WorldBounds } from '../contracts/bounds';
 import { DEFAULT_CURVE_PALETTE_COLOR } from '../contracts/appearance';
 import { ThreeSceneController, type ViewportStatus, type AnimationState } from '../rendering';
 import { translations, type SupportedLanguage } from '../i18n';
-import { RotateCcw, Play, Pause, Layers, Focus, Zap, Sparkles } from 'lucide-react';
+import { RotateCcw, Play, Pause, Focus, Zap, Sparkles } from 'lucide-react';
 
-export type QualityLevel = 'low' | 'medium' | 'high';
+export type QualityLevel = 'auto' | 'low';
 
 export interface GraphViewportProps {
   surfaceFText: string;
@@ -15,6 +15,7 @@ export interface GraphViewportProps {
   geometryResult?: GeometryResult | null;
   isGeometryGenerating?: boolean;
   onRegionChange?: (newRegion: WorldBounds) => void;
+  onViewChange?: (view: GeometryView) => void;
   quality?: QualityLevel;
   onQualityChange?: (quality: QualityLevel) => void;
   lang?: SupportedLanguage;
@@ -28,7 +29,8 @@ export const GraphViewport: React.FC<GraphViewportProps> = ({
   geometryResult,
   isGeometryGenerating,
   onRegionChange,
-  quality = 'high',
+  onViewChange,
+  quality = 'auto',
   onQualityChange,
   lang = 'es',
   theme = 'dark',
@@ -50,6 +52,7 @@ export const GraphViewport: React.FC<GraphViewportProps> = ({
       onRegionChange: (region) => {
         onRegionChange?.(region);
       },
+      onViewChange,
       onStatusChange: (status) => {
         setViewportStatus(status);
       },
@@ -59,6 +62,7 @@ export const GraphViewport: React.FC<GraphViewportProps> = ({
     });
 
     controller.setTheme(theme);
+    controller.setLanguage(lang);
     controller.setQuality(quality);
     controllerRef.current = controller;
 
@@ -67,6 +71,8 @@ export const GraphViewport: React.FC<GraphViewportProps> = ({
       controllerRef.current = null;
     };
   }, []);
+
+  useEffect(() => { controllerRef.current?.setLanguage(lang); }, [lang]);
 
   // Sync theme changes to WebGL scene
   useEffect(() => {
@@ -142,9 +148,7 @@ export const GraphViewport: React.FC<GraphViewportProps> = ({
     switch (q) {
       case 'low':
         return <Zap size={13} style={{ marginRight: '4px' }} />;
-      case 'medium':
-        return <Layers size={13} style={{ marginRight: '4px' }} />;
-      case 'high':
+      case 'auto':
       default:
         return <Sparkles size={13} style={{ marginRight: '4px' }} />;
     }
@@ -154,23 +158,15 @@ export const GraphViewport: React.FC<GraphViewportProps> = ({
     switch (q) {
       case 'low':
         return t.viewport.detailLow;
-      case 'medium':
-        return t.viewport.detailMedium;
-      case 'high':
+      case 'auto':
       default:
-        return t.viewport.detailHigh;
+        return t.viewport.detailAuto;
     }
   };
 
   const cycleQuality = useCallback(() => {
     if (!onQualityChange) return;
-    if (quality === 'high') {
-      onQualityChange('low');
-    } else if (quality === 'low') {
-      onQualityChange('medium');
-    } else {
-      onQualityChange('high');
-    }
+    onQualityChange(quality === 'auto' ? 'low' : 'auto');
   }, [onQualityChange, quality]);
 
   const screenReaderSummary = useMemo(() => {
@@ -244,6 +240,7 @@ export const GraphViewport: React.FC<GraphViewportProps> = ({
               onClick={cycleQuality}
               title={`${t.viewport.detail}: ${getQualityLabel(quality)}`}
               aria-label={`${t.viewport.detail}: ${getQualityLabel(quality)}`}
+              aria-pressed={quality === 'auto'}
             >
               {getQualityIcon(quality)}
               <span>{`${t.viewport.detail}: ${getQualityLabel(quality)}`}</span>

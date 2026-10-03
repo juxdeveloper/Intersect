@@ -77,11 +77,8 @@ export interface Translations {
     replayTitle: string;
     resetViewTitle: string;
     detail: string;
+    detailAuto: string;
     detailLow: string;
-    detailMedium: string;
-    detailHigh: string;
-    detailStandard: string;
-    detailUltra: string;
     resetView: string;
     legendF: string;
     legendG: string;
@@ -238,11 +235,8 @@ export const translations: Record<SupportedLanguage, Translations> = {
       replayTitle: 'Reproducir (Espacio)',
       resetViewTitle: 'Restablecer vista (R)',
       detail: 'Detalle',
+      detailAuto: 'Auto',
       detailLow: 'Bajo',
-      detailMedium: 'Medio',
-      detailHigh: 'Alto',
-      detailStandard: 'Medio',
-      detailUltra: 'Alto',
       resetView: 'Restablecer vista',
       legendF: 'Superficie F',
       legendG: 'Superficie G',
@@ -397,11 +391,8 @@ export const translations: Record<SupportedLanguage, Translations> = {
       replayTitle: 'Replay (Space)',
       resetViewTitle: 'Reset view (R)',
       detail: 'Detail',
+      detailAuto: 'Auto',
       detailLow: 'Low',
-      detailMedium: 'Medium',
-      detailHigh: 'High',
-      detailStandard: 'Medium',
-      detailUltra: 'High',
       resetView: 'Reset view',
       legendF: 'Surface F',
       legendG: 'Surface G',
