@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/Header';
+import { Credits } from './components/Credits';
 import { EquationInputSection, type MathFieldInputHandle } from './components/EquationInputSection';
 import { DirectionToggle } from './components/DirectionToggle';
 import { ResultSection } from './components/ResultSection';
@@ -1029,10 +1030,7 @@ export const App: React.FC = () => {
               {t.inputs.loadExample}
             </button>
           </div>
-          <footer className="app-credits" aria-label={t.credits.label}>
-            <p>{t.credits.creator} Angel Joseph Estrada Santos (@juxdeveloper)</p>
-            <p>{t.credits.collaborator}: Hanniel Cardoso Jaramillo (@HannDev2)</p>
-          </footer>
+          <Credits lang={lang} />
         </div>
       </aside>
 

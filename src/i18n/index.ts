@@ -16,6 +16,8 @@ export interface Translations {
     label: string;
     creator: string;
     collaborator: string;
+    license: string;
+    openSource: string;
   };
   app: {
     title: string;
@@ -174,6 +176,8 @@ export const translations: Record<SupportedLanguage, Translations> = {
       label: 'Créditos',
       creator: 'Creado y desarrollado por',
       collaborator: 'Colaborador',
+      license: 'Ver la licencia GNU GPL 3.0 o posterior',
+      openSource: 'Software libre bajo GNU GPL 3.0 o posterior.',
     },
     app: {
       title: 'Intersect',
@@ -330,6 +334,8 @@ export const translations: Record<SupportedLanguage, Translations> = {
       label: 'Credits',
       creator: 'Created & Developed by',
       collaborator: 'Collaborator',
+      license: 'Read the GNU GPL 3.0 or later license',
+      openSource: 'Free software under GNU GPL 3.0 or later.',
     },
     app: {
       title: 'Intersect',
