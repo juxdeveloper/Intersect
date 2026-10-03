@@ -332,7 +332,7 @@ export class ThreeSceneController {
       }
     }
     if (this.camera && this.coordManager) {
-      this.coordManager.updateForCamera(this.camera);
+      this.coordManager.updateForCamera(this.camera, this.container?.clientHeight, this.controls?.target);
     }
     this.startLoop();
     this.scheduleRegionCheck();
@@ -529,6 +529,7 @@ export class ThreeSceneController {
    */
   public render(): void {
     if (!this.renderer || !this.scene || !this.camera || this.isDisposed) return;
+    this.coordManager?.updateForCamera(this.camera, this.container?.clientHeight, this.controls?.target);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -617,7 +618,7 @@ export class ThreeSceneController {
     }
     if (this.coordManager) {
       this.coordManager.setTheme(isDark);
-      if (this.camera) this.coordManager.updateForCamera(this.camera);
+      if (this.camera) this.coordManager.updateForCamera(this.camera, this.container?.clientHeight, this.controls?.target);
     }
     if (this.surfaceFMaterial) {
       this.surfaceFMaterial.color.setHex(isDark ? SURFACE_F_COLOR_DARK : SURFACE_F_COLOR_LIGHT);
@@ -627,6 +628,11 @@ export class ThreeSceneController {
       this.surfaceGMaterial.color.setHex(isDark ? SURFACE_G_COLOR_DARK : SURFACE_G_COLOR_LIGHT);
       this.surfaceGMaterial.opacity = isDark ? 0.35 : 0.40;
     }
+    this.requestRender();
+  }
+
+  public setLanguage(locale: 'es' | 'en'): void {
+    this.coordManager?.setLanguage(locale);
     this.requestRender();
   }
 
