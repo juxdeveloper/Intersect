@@ -23,7 +23,7 @@ import type { WorldBounds } from './bounds';
 import type { ExpressionNode, DomainObligation } from './expressions';
 import type { ExactCurve, TraversalDirection, CurveTraversalMetadata } from './curve';
 
-export const GEOMETRY_PROTOCOL_VERSION = '1.0.0';
+export const GEOMETRY_PROTOCOL_VERSION = '1.1.0';
 
 export type GeometryQualityPreset = 'auto' | 'low' | 'medium' | 'high' | 'draft' | 'default' | 'ultra';
 
@@ -250,6 +250,7 @@ export interface PingGeometryWorkerRequest {
 
 export type GeometryWorkerResponse =
   | GeometryResultResponse
+  | GeometryPreviewResponse
   | GeometryProgressResponse
   | GeometryCancelledResponse
   | GeometryErrorResponse
@@ -257,6 +258,12 @@ export type GeometryWorkerResponse =
 
 export interface GeometryResultResponse {
   readonly type: 'geometry-result';
+  readonly result: GeometryResult;
+}
+
+/** A promptly rendered intermediate mesh; only geometry-result completes a job. */
+export interface GeometryPreviewResponse {
+  readonly type: 'geometry-preview';
   readonly result: GeometryResult;
 }
 

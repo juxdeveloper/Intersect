@@ -54,7 +54,7 @@ try {
     { name: 'prefers-color-scheme', value: 'dark' },
   ]);
   await page.evaluateOnNewDocument(() => {
-    window.__renderAudit = { requests: [], results: [], frames: 0 };
+    window.__renderAudit = { requests: [], results: [], previews: [], frames: 0 };
     const originalFrame = window.requestAnimationFrame;
     window.requestAnimationFrame = (callback) => {
       window.__renderAudit.frames++;
@@ -65,14 +65,15 @@ try {
       constructor(...args) {
         super(...args);
         this.addEventListener('message', (event) => {
-          if (event.data.type !== 'geometry-result') return;
+          if (!['geometry-result', 'geometry-preview'].includes(event.data.type)) return;
           const result = event.data.result;
           let radialError = 0;
           const positions = result.surfaceF.positions;
           for (let i = 0; i < positions.length; i += 3) {
             radialError = Math.max(radialError, Math.abs(Math.hypot(positions[i], positions[i + 1]) - 2));
           }
-          window.__renderAudit.results.push({ jobId: result.jobId, region: result.renderRegion,
+          const responses = event.data.type === 'geometry-preview' ? window.__renderAudit.previews : window.__renderAudit.results;
+          responses.push({ jobId: result.jobId, generation: result.workerGeneration, receivedAt: performance.now(), region: result.renderRegion,
             radialError, cells: result.surfaceF.diagnostics.cellsProcessed,
             triangles: result.surfaceF.triangleCount, duration: result.totalDurationMs,
             fStatus: result.surfaceF.status, gStatus: result.surfaceG.status });
@@ -80,8 +81,9 @@ try {
       }
       postMessage(message, ...args) {
         if (message.type === 'generate-geometry') {
-          const { jobId, view, quality, renderRegion } = message.request;
-          window.__renderAudit.requests.push({ jobId, view, quality, renderRegion });
+          const { jobId, workerGeneration, view, quality, renderRegion, surfaceF, surfaceG } = message.request;
+          window.__renderAudit.requests.push({ jobId, generation: workerGeneration, sentAt: performance.now(), view, quality, renderRegion,
+            fLabel: surfaceF.label, gLabel: surfaceG.label });
         }
         return super.postMessage(message, ...args);
       }
@@ -145,6 +147,15 @@ try {
   assert(near.radialError < low.radialError * 0.15, `Cylinder accuracy failed: ${JSON.stringify({ low, near })}`);
   assert.equal(near.fStatus, 'success');
   assert.equal(near.gStatus, 'success');
+  const nearPreview = await page.evaluate(() => {
+    const audit = window.__renderAudit;
+    const last = audit.results.at(-1);
+    const preview = audit.previews.find((item) => item.jobId === last.jobId && item.generation === last.generation);
+    const request = audit.requests.find((item) => item.jobId === last.jobId && item.generation === last.generation);
+    return preview && { ...preview, latencyMs: preview.receivedAt - request.sentAt };
+  });
+  assert(nearPreview && nearPreview.cells === 64 ** 3, 'Auto must publish a real intermediate mesh before full refinement');
+  assert(nearPreview.latencyMs < 1000, `Close Auto preview was not responsive: ${nearPreview.latencyMs}ms`);
   assert.equal(await page.$eval('.curve-equation math-field', (el) => el.value), formula, 'Zoom changed the exact formula');
   const artifacts = process.env.INTERSECT_ARTIFACT_DIR;
   if (artifacts) {
@@ -160,9 +171,51 @@ try {
   const count = await page.evaluate(() => window.__renderAudit.frames);
   await new Promise((resolve) => setTimeout(resolve, 800));
   assert.equal(await page.evaluate(() => window.__renderAudit.frames), count, 'Idle render loop stayed active');
-  console.log(`PASS: Auto/Low, previous High retained, close cylinder accuracy, bounded zoom, unchanged exact math, idle loop (${JSON.stringify({ initialDistance: initial.distance, maximumDistance: far.distance, lowError: low.radialError, autoError: near.radialError, nearDurationMs: near.duration })}).`);
+  console.log(`PASS: Auto/Low, previous High retained, close cylinder accuracy, bounded zoom, unchanged exact math, idle loop (${JSON.stringify({ initialDistance: initial.distance, maximumDistance: far.distance, lowError: low.radialError, autoError: near.radialError, nearDurationMs: near.duration, nearPreviewLatencyMs: nearPreview.latencyMs })}).`);
+  const editLatencies = [];
+  for (const value of ['z=\\sin(x)', 'z=\\sin(x)+1', 'z=\\sin(x)+2', 'z=\\sin(x)+3', 'z=\\sin(x)+4', 'z=\\sin(x)']) {
+    const editAt = await page.evaluate((value) => {
+      const field = document.getElementById('surface-g-input');
+      const time = performance.now();
+      field.setValue(value, { silenceNotifications: true });
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      return time;
+    }, value);
+    await page.waitForFunction((label, time) => {
+      const audit = window.__renderAudit;
+      return audit.previews.some((preview) => audit.requests.some((request) => request.sentAt >= time
+        && request.gLabel === label && request.jobId === preview.jobId && request.generation === preview.generation));
+    }, { timeout: 10000, polling: 20 }, value, editAt);
+    const latency = await page.evaluate((label, time) => {
+      const audit = window.__renderAudit;
+      const preview = audit.previews.find((preview) => audit.requests.some((request) => request.sentAt >= time
+        && request.gLabel === label && request.jobId === preview.jobId && request.generation === preview.generation));
+      return preview.receivedAt - time;
+    }, value, editAt);
+    assert(latency < 1000, `Live edit preview exceeded one second: ${latency}ms`);
+    editLatencies.push(Math.round(latency));
+  }
+  await waitForGeometry();
+  await page.waitForFunction(() => !document.querySelector('.is-stale-draft'), { timeout: 60000 });
+  // Solver completion can start a new geometry job after the last input preview.
+  await waitForGeometry();
+  assert(!await page.$('.graph-status-pill.loading'), 'Generating indicator remained after current geometry completed');
+  console.log(`PASS: six successive live edits, superseding refinement without a backlog; edit-to-preview latencies ${JSON.stringify(editLatencies)}ms.`);
+  await page.evaluate(() => {
+    const field = document.getElementById('surface-g-input');
+    field.setValue('x^2+y^2=4', { silenceNotifications: true });
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForFunction(() => window.__renderAudit.requests.at(-1)?.gLabel === 'x^2+y^2=4', { timeout: 10000 });
+  await waitForGeometry();
+  const identical = await page.evaluate(() => window.__renderAudit.results.at(-1));
+  assert.equal(identical.fStatus, 'success');
+  assert.equal(identical.gStatus, 'success');
+  console.log('PASS: identical surfaces transfer shared cached geometry without detached-buffer errors.');
+  if (artifacts) fs.writeFileSync(`${artifacts}/performance-audit.json`, JSON.stringify(await page.evaluate(() => window.__renderAudit), null, 2));
   for (const width of [1280, 768, 390]) {
     await page.setViewport({ width, height: 844, isMobile: width === 390, hasTouch: width === 390 });
+    await waitForGeometry();
     await page.$eval('.app-credits', (el) => el.scrollIntoView());
     const layout = await page.$eval('.app-credits', (el) => {
       const box = el.getBoundingClientRect();
@@ -170,8 +223,14 @@ try {
         pageOverflow: document.documentElement.scrollWidth > innerWidth, viewport: innerWidth };
     });
     assert(layout.width > 0 && layout.left >= 0 && layout.right <= layout.viewport + 1, JSON.stringify(layout));
-    assert(!layout.overflow && !layout.pageOverflow, `Overflow at ${width}px`);
-    await waitForGeometry();
+    if (layout.overflow || layout.pageOverflow) {
+      const overflowing = await page.$$eval('body *', (nodes) => nodes.filter((node) => {
+        const rect = node.getBoundingClientRect(); return rect.width && rect.right > innerWidth + 1;
+      }).slice(0, 15).map((node) => ({ tag: node.tagName, class: node.className,
+        width: node.getBoundingClientRect().width, right: node.getBoundingClientRect().right })));
+      if (artifacts) await page.screenshot({ path: `${artifacts}/overflow-${width}.png` });
+      assert.fail(`Overflow at ${width}px: ${JSON.stringify({ layout, overflowing })}`);
+    }
     if (artifacts) await page.screenshot({ path: `${artifacts}/credits-${width}.png` });
   }
   console.log('PASS: ES/EN credits, desktop/tablet/mobile layout, WebGL canvas.');
@@ -216,6 +275,7 @@ try {
   assert.deepEqual(external, [], 'Unexpected external runtime requests');
   assert.deepEqual(errors, [], 'Uncaught browser errors');
   console.log('PASS: zero external runtime requests and uncaught browser errors.');
+  if (artifacts) fs.writeFileSync(`${artifacts}/render-audit.json`, JSON.stringify(await page.evaluate(() => window.__renderAudit), null, 2));
 } finally {
   if (browser) await browser.close();
   preview?.kill('SIGTERM');

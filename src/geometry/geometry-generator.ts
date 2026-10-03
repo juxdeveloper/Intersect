@@ -9,11 +9,24 @@ import {
   type GeometryRequest,
   type GeometryResult,
   type GeometryBudget,
+  type SurfaceInputSpec,
   GEOMETRY_BUDGET_PRESETS,
 } from '../contracts/geometry';
 import { extractImplicitSurface } from './marching-cubes';
 import { sampleExactCurve } from './curve-sampler';
 import { autoGeometryBudget } from './view-detail';
+import { GeometryCache } from './geometry-cache';
+
+function surfaceCacheKey(spec: SurfaceInputSpec, request: GeometryRequest, budget: GeometryBudget): string {
+  return JSON.stringify(['surface', spec.residual, spec.domainObligations ?? [], request.renderRegion,
+    budget.gridResolution, budget.maxVerticesPerMesh, budget.maxTrianglesPerMesh, budget.maxDurationMs]);
+}
+
+export function hasCachedSurfaces(request: GeometryRequest, cache: GeometryCache): boolean {
+  const budget = resolveGeometryBudget(request);
+  return Boolean(cache.get(surfaceCacheKey(request.surfaceF, request, budget))
+    && cache.get(surfaceCacheKey(request.surfaceG, request, budget)));
+}
 
 /**
  * Resolves the effective GeometryBudget from the requested preset and custom overrides.
@@ -44,37 +57,32 @@ export function resolveGeometryBudget(request: GeometryRequest): GeometryBudget 
 export function generateGeometry(
   request: GeometryRequest,
   isCancelled?: () => boolean,
+  cache?: GeometryCache,
 ): GeometryResult {
   const startTime = Date.now();
   const budget = resolveGeometryBudget(request);
 
-  // 1. Surface F Extraction
-  const surfaceF = extractImplicitSurface(
-    request.surfaceF.residual,
-    request.surfaceF.domainObligations ?? [],
-    request.renderRegion,
-    budget,
-    isCancelled,
-  );
-
-  // 2. Surface G Extraction
-  const surfaceG = extractImplicitSurface(
-    request.surfaceG.residual,
-    request.surfaceG.domainObligations ?? [],
-    request.renderRegion,
-    budget,
-    isCancelled,
-  );
+  const surface = (spec: GeometryRequest['surfaceF']) => {
+    const key = surfaceCacheKey(spec, request, budget);
+    const cached = cache?.get<ReturnType<typeof extractImplicitSurface>>(key);
+    if (cached && !isCancelled?.()) return cached;
+    const buffer = extractImplicitSurface(spec.residual, spec.domainObligations ?? [], request.renderRegion, budget, isCancelled);
+    cache?.set(key, buffer);
+    return buffer;
+  };
+  const surfaceF = surface(request.surfaceF);
+  const surfaceG = surface(request.surfaceG);
 
   // 3. Exact Curve Sampling (if present)
   let curve = null;
   if (request.curve?.exactCurve) {
-    curve = sampleExactCurve(
-      request.curve.exactCurve,
-      request.renderRegion,
-      budget,
-      isCancelled,
-    );
+    const key = JSON.stringify(['curve', request.curve.exactCurve, request.renderRegion,
+      budget.maxCurveSamples, budget.maxCurveSubdivisionDepth, budget.curveGeometricTolerance, budget.maxDurationMs]);
+    curve = !isCancelled?.() ? cache?.get<ReturnType<typeof sampleExactCurve>>(key) ?? null : null;
+    if (!curve) {
+      curve = sampleExactCurve(request.curve.exactCurve, request.renderRegion, budget, isCancelled);
+      cache?.set(key, curve);
+    }
   }
 
   const totalDurationMs = Date.now() - startTime;

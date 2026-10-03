@@ -1,6 +1,6 @@
 # Intersect — Phase V11 Performance & Accessibility Budgets
 
-Document revision: 2
+Document revision: 3
 Date: 2026-10-03
 Environment: Linux x86_64, Node v26.10.0, Headless Chromium (/opt/google/chrome/chrome) with SwiftShader (software WebGL 2.0 Angle), Vite production preview.
 
@@ -49,6 +49,9 @@ Based on repository facts and the tested environment, the following budgets are 
    - `Low`: the previous High configuration, 112 cells per axis, 750k vertices / 1.5M triangles per surface, 14k curve samples, 0.002-unit curve tolerance, and a 50-unit minimum region half-span.
    - Auto limits: 1M vertices / 2M triangles per surface, 24k curve samples, 17 subdivision levels, and a 20-second extraction limit per surface. Partial meshes retain their explicit geometry status. The existing controller adds a finite job timeout.
    - Navigation settles for 350ms before requests. Hysteresis prevents remeshing on every interaction frame; the previous mesh remains visible while its replacement is generated in a dedicated worker. Superseded synchronous meshing workers are terminated immediately to prevent a backlog.
+   - Auto now publishes a 64-cell preview before full refinement. The original 144–192-cell final budget and curve tolerance remain unchanged. A current preview updates the graph while the job remains active; only its final result completes the promise. Cached full meshes bypass the preview. Low remains single-pass.
+   - Numeric AST closures preserve the interpreter's operation order, real roots, source-domain restrictions, and invalid/pole diagnostics. One/two-axis subtrees use at most 4 MiB of per-mesh grid cache. Empty cells allocate no corners; active cells reuse storage, and rolling typed edge caches preserve vertex welding and triangle order.
+   - A worker-owned LRU retains at most eight completed buffers and 32 MiB. Keys include expressions, source restrictions, region, and relevant budgets. Buffers are cloned before transfer, and transfer lists are deduplicated for identical surfaces. Cancellation still terminates the worker and releases its cache. Identical curve samples do not restart an active trace during surface refinement.
    - Zoom-out is limited to 1.4 times the reference framing distance, adjusted for aspect ratio and once for a new curve's bounds. Camera target bounds remain [-1000, 1000] on all axes. Near clipping adapts to camera distance.
    - Axis labels grow gently from 13 to 19 CSS pixels, with high-resolution local textures, projected collision checks, locale-aware 1/2/5 ticks including odd/fractional values, and reference-counted texture disposal.
    - Legacy worker presets remain accepted internally for compatibility; only Auto and Low are offered by the UI.
@@ -66,3 +69,18 @@ Based on repository facts and the tested environment, the following budgets are 
 4. **Prefers-Reduced-Motion**: Respects system motion preference by disabling auto-tracing and displaying static direction indicator.
 5. **Screen Reader Announcements**: Polite aria-live regions for calculation completion and validation diagnostics without interrupting user typing.
 6. **Color Contrast & Labels**: All primary text $\ge 4.5:1$ contrast ratio against background; outcomes identified by descriptive text and badges, not color alone.
+
+
+## 3. Auto Repair Measurements (2026-10-03)
+
+An independent baseline-source comparison against `a6b7142` found identical SHA-256 hashes for all 40 final mesh buffers across five workloads. Final grid resolution and curve tolerance were unchanged.
+
+| Full geometry workload | Before (ms) | After (ms) | Speedup |
+| :--- | ---: | ---: | ---: |
+| Cylinder and plane | 5758 | 1024 | 5.6× |
+| Close cylinder and sine | 10132 | 1016 | 10.0× |
+| Sphere and plane | 11057 | 1982 | 5.6× |
+| Saddle and plane | 6821 | 1988 | 3.4× |
+| Rational surface and plane | 5046 | 680 | 7.4× |
+
+These are Node v26.10.0 production-bundle observations, not browser/GPU guarantees. Production Chromium with SwiftShader measured a close preview at 622ms and full refinement at 2869ms, versus the earlier release's 9440ms full refinement. Six successive edits produced fresh previews in 212–557ms including the input debounce. The production smoke check requires tested edit/close-preview latency below one second; arbitrary expression complexity is still bounded by the original finite budgets and watchdog. Exact solving and cold Pyodide initialization remain independent of graphics refinement.

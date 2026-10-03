@@ -25,6 +25,7 @@ import {
 } from '../index';
 import type { CurveGeometryBuffer } from '../../contracts/geometry';
 import { createEmptyCurveBuffer } from '../../contracts/geometry';
+import { sameCurveSamples } from '../scene-controller';
 
 describe('Intersect V7 3D Scene & Rendering Suite', () => {
   describe('1. Materials & Visual Hierarchy (Section 7)', () => {
@@ -102,6 +103,17 @@ describe('Intersect V7 3D Scene & Rendering Suite', () => {
   });
 
   describe('3. Geometry Buffer Ingestion & Segmentation (Section 4 & 7.B)', () => {
+    it('preserves a trace only for identical samples, direction, and segment boundaries', () => {
+      const curve = { ...createEmptyCurveBuffer('success'), positions: new Float32Array([0, 1, 2, 1, 2, 3]),
+        tValues: new Float64Array([0, 1]), segmentBreaks: new Uint32Array([0]) };
+      expect(sameCurveSamples(curve, structuredClone(curve))).toBe(true);
+      expect(sameCurveSamples(curve, { ...curve, traversalOrientation: 'reverse' })).toBe(false);
+      expect(sameCurveSamples(curve, { ...curve, positions: new Float32Array([0, 1, 2, 1, 2, 4]) })).toBe(false);
+      expect(sameCurveSamples(curve, { ...curve, tValues: new Float64Array([0, 2]) })).toBe(false);
+      expect(sameCurveSamples(curve, { ...curve, segmentBreaks: new Uint32Array([0, 1]) })).toBe(false);
+      expect(sameCurveSamples(curve, null)).toBe(false);
+      expect(sameCurveSamples(null, null)).toBe(true);
+    });
     it('correctly calculates segment ranges for multiple separated curve components', () => {
       // Curve with 2 separated segments: points 0..1 (seg 0) and points 2..3 (seg 1)
       const positions = new Float32Array([

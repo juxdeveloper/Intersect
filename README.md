@@ -18,7 +18,7 @@ All calculation, rendering, and history storage run locally in your browser. The
 - An active curve formula, real parameter domain, and initially collapsed derivation.
 - Forward/reverse traversal, curve animation, replay, and custom curve colors.
 - Interactive Three.js scene with **+Z up**, colored axes, numbered ticks, translucent surfaces, and mouse/touch orbit, pan, and zoom.
-- **Auto** graphics detail by default: surface and curve sampling refine after zoom or pan settles. **Low** retains the previous High detail budget. Zoom-out is bounded to a useful overview; crisp axis text scales within readable limits and reveals finer ticks when space allows.
+- **Auto** graphics detail by default: a fast preview responds to edits and settled navigation, then surfaces refine to the full zoom-dependent detail in a background worker. Unchanged geometry is reused within a bounded local cache. **Low** retains the previous High detail budget. Zoom-out is bounded to a useful overview; crisp axis text scales within readable limits and reveals finer ticks when space allows.
 - Spanish by default, an English switch, and persistent Auto/Light/Dark themes.
 - Local IndexedDB calculation history, up to 100 entries, with a memory fallback when storage is unavailable.
 - Responsive layout, keyboard controls, reduced-motion support, and offline PWA installation in supporting browsers.
@@ -142,4 +142,4 @@ See [architecture](docs/architecture.md), [performance budgets](docs/performance
 
 The initial public Git history is a **retrospective reconstruction** of the existing working tree, created on October 3, 2026. Its backdated milestones and requested author assignments organize the release; they are not contemporaneous evidence of when or by whom each original file was developed. The reconstruction contains 200 commits: 160 attributed to the lead and 40 to the collaborator, with matching author and committer timestamps distributed over the preceding 21 days.
 
-Six subsequent implementation commits add adaptive rendering, bounded zoom, readable axes, linked bilingual credits, and the production hostname above, bringing the repository to 206 commits. These changes use current commit dates and preserve the original reconstructed history.
+The adaptive-rendering release added six subsequent implementation commits for bounded zoom, readable axes, linked bilingual credits, and the production hostname above, reaching 206 commits. A subsequent performance repair adds live Auto previews and bounded geometry caches while retaining final detail. Implementation changes use current commit dates and preserve the original reconstructed history.

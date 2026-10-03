@@ -673,6 +673,7 @@ export class ThreeSceneController {
   public updateGeometry(result: GeometryResult | null): void {
     if (this.isDisposed || !this.scene) return;
 
+    const previousResult = this.lastGeometryResult;
     this.lastGeometryResult = result;
 
     if (!result) {
@@ -709,7 +710,9 @@ export class ThreeSceneController {
     this.installSurfaceMesh(this.surfaceGGroup, result.surfaceG, this.surfaceGMaterial);
 
     // 3. Install Intersection Curve and configure trace animation
-    this.installCurveSegments(this.curveGroup, result.curve, autoPlay);
+    if (autoPlay || previousResult === result || !sameCurveSamples(previousResult?.curve ?? null, result.curve)) {
+      this.installCurveSegments(this.curveGroup, result.curve, autoPlay);
+    }
 
     this.requestRender();
   }
@@ -962,4 +965,17 @@ export class ThreeSceneController {
     this.camera = null;
     this.container = null;
   }
+}
+
+/** Refining surfaces must not restart an unchanged active curve trace. */
+export function sameCurveSamples(a: CurveGeometryBuffer | null, b: CurveGeometryBuffer | null): boolean {
+  if (!a || !b) return a === b;
+  if (a.status !== b.status || a.traversalOrientation !== b.traversalOrientation
+    || a.isClosed !== b.isClosed || a.isPeriodic !== b.isPeriodic) return false;
+  const same = (left: ArrayLike<number>, right: ArrayLike<number>) => {
+    if (left.length !== right.length) return false;
+    for (let i = 0; i < left.length; i++) if (left[i] !== right[i]) return false;
+    return true;
+  };
+  return same(a.positions, b.positions) && same(a.tValues, b.tValues) && same(a.segmentBreaks, b.segmentBreaks);
 }

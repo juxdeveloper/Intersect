@@ -26,6 +26,7 @@ import { generateGeometry } from './geometry-generator';
 export type GeometryControllerState =
   | 'idle'
   | 'generating'
+  | 'refining'
   | 'ready'
   | 'failed'
   | 'cancelled'
@@ -130,6 +131,13 @@ export class GeometryController {
 
   private handleWorkerMessage(msg: GeometryWorkerResponse) {
     switch (msg.type) {
+      case 'geometry-preview': {
+        if (msg.result.workerGeneration !== this.workerGeneration || msg.result.jobId !== this.activeJobId) return;
+        this.lastResult = msg.result;
+        this.state = 'refining';
+        this.notify();
+        break;
+      }
       case 'geometry-result': {
         // Stale result rejection: discard if worker generation or jobId does not match active job
         if (msg.result.workerGeneration !== this.workerGeneration) {

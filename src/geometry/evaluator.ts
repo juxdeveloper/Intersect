@@ -56,7 +56,8 @@ export type EvalOutcome =
         | 'unsupported_op';
     };
 
-const EPSILON_ZERO = 1e-12;
+import { compileNumericExpression, expressionDependencies, REAL_DOMAIN_EPSILON } from './numeric-expression';
+const EPSILON_ZERO = REAL_DOMAIN_EPSILON;
 
 export function makeFiniteOutcome(val: number): EvalOutcome {
   if (Number.isFinite(val)) {
@@ -688,6 +689,8 @@ export function reduceRepeatedFactorResidual(node: ExpressionNode): {
  * Evaluates points in tight loops with cached domain obligation checks.
  */
 export interface CompiledEvaluator {
+  readonly dependencies: ReadonlySet<string>;
+  readonly evaluateNumeric?: (x: number, y: number, z: number) => number;
   evaluate(x: number, y: number, z: number): EvalOutcome;
   evaluateT(t: number): EvalOutcome;
 }
@@ -697,8 +700,16 @@ export function compileEvaluator(
   domainObligations: readonly DomainObligation[] = [],
 ): CompiledEvaluator {
   const env: MutableEvalEnv = { x: 0, y: 0, z: 0, t: 0, u: 0 };
+  const numeric = compileNumericExpression(residualNode);
+  const evaluateFast = (x: number, y: number, z: number) => {
+    env.x = x; env.y = y; env.z = z;
+    return numeric!(env);
+  };
 
   return {
+    dependencies: expressionDependencies([residualNode, ...domainObligations.map((obligation) => obligation.target)]),
+    // Bulk sampling bypasses outcome allocations only when no source obligations exist.
+    evaluateNumeric: numeric && domainObligations.length === 0 ? evaluateFast : undefined,
     evaluate(x: number, y: number, z: number): EvalOutcome {
       env.x = x;
       env.y = y;
@@ -718,6 +729,10 @@ export function compileEvaluator(
       }
 
       // 2. Evaluate residual
+      if (numeric) {
+        const value = numeric(env);
+        if (Number.isFinite(value)) return { valid: true, value };
+      }
       return evaluateNode(residualNode, env);
     },
 
@@ -737,6 +752,10 @@ export function compileEvaluator(
         }
       }
 
+      if (numeric) {
+        const value = numeric(env);
+        if (Number.isFinite(value)) return { valid: true, value };
+      }
       return evaluateNode(residualNode, env);
     },
   };

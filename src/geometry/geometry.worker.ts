@@ -10,7 +10,10 @@ import type {
   GeometryWorkerRequest,
   GeometryWorkerResponse,
 } from '../contracts/geometry';
-import { generateGeometry } from './geometry-generator';
+import { runGeometryJob } from './geometry-pipeline';
+import { GeometryCache } from './geometry-cache';
+
+const cache = new GeometryCache();
 
 let currentJobId: string | null = null;
 let currentCancelled = false;
@@ -28,59 +31,52 @@ self.onmessage = (event: MessageEvent<GeometryWorkerRequest>) => {
       const isCancelled = () => currentCancelled || currentJobId !== request.jobId;
 
       try {
-        const result = generateGeometry(request, isCancelled);
+        runGeometryJob(request, cache, (type, cachedResult) => {
+          // The cache owns original arrays. Transfer a fresh copy so cached entries
+          // remain attached and can serve subsequent curve/input-only updates.
+          const result = structuredClone(cachedResult);
+          // Collect ArrayBuffers for zero-copy transfer
+          const transferables: Transferable[] = [];
 
-        if (isCancelled()) {
-          const cancelResp: GeometryWorkerResponse = {
-            type: 'geometry-cancelled',
-            jobId: request.jobId,
-            reason: 'Superseded or cancelled by client',
+          if (result.surfaceF.positions.buffer) {
+            transferables.push(
+              result.surfaceF.positions.buffer,
+              result.surfaceF.normals.buffer,
+              result.surfaceF.indices.buffer,
+            );
+            if (result.surfaceF.guideCurvesPositions?.buffer) {
+              transferables.push(result.surfaceF.guideCurvesPositions.buffer);
+            }
+          }
+          if (result.surfaceG.positions.buffer) {
+            transferables.push(
+              result.surfaceG.positions.buffer,
+              result.surfaceG.normals.buffer,
+              result.surfaceG.indices.buffer,
+            );
+            if (result.surfaceG.guideCurvesPositions?.buffer) {
+              transferables.push(result.surfaceG.guideCurvesPositions.buffer);
+            }
+          }
+          if (result.curve) {
+            transferables.push(
+              result.curve.positions.buffer,
+              result.curve.tValues.buffer,
+              result.curve.segmentBreaks.buffer,
+            );
+          }
+
+          const successResp: GeometryWorkerResponse = {
+            type,
+            result,
           };
-          self.postMessage(cancelResp);
-          return;
-        }
 
-        // Collect ArrayBuffers for zero-copy transfer
-        const transferables: Transferable[] = [];
-
-        if (result.surfaceF.positions.buffer) {
-          transferables.push(
-            result.surfaceF.positions.buffer,
-            result.surfaceF.normals.buffer,
-            result.surfaceF.indices.buffer,
+          // Transfer buffers (worker side is detached after this call)
+          (self as unknown as { postMessage: (msg: unknown, transfer?: Transferable[]) => void }).postMessage(
+            successResp,
+            [...new Set(transferables)],
           );
-          if (result.surfaceF.guideCurvesPositions?.buffer) {
-            transferables.push(result.surfaceF.guideCurvesPositions.buffer);
-          }
-        }
-        if (result.surfaceG.positions.buffer) {
-          transferables.push(
-            result.surfaceG.positions.buffer,
-            result.surfaceG.normals.buffer,
-            result.surfaceG.indices.buffer,
-          );
-          if (result.surfaceG.guideCurvesPositions?.buffer) {
-            transferables.push(result.surfaceG.guideCurvesPositions.buffer);
-          }
-        }
-        if (result.curve) {
-          transferables.push(
-            result.curve.positions.buffer,
-            result.curve.tValues.buffer,
-            result.curve.segmentBreaks.buffer,
-          );
-        }
-
-        const successResp: GeometryWorkerResponse = {
-          type: 'geometry-result',
-          result,
-        };
-
-        // Transfer buffers (worker side is detached after this call)
-        (self as unknown as { postMessage: (msg: unknown, transfer?: Transferable[]) => void }).postMessage(
-          successResp,
-          transferables,
-        );
+        }, isCancelled);
       } catch (err: unknown) {
         const errorResp: GeometryWorkerResponse = {
           type: 'geometry-error',

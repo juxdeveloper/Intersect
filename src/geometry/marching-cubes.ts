@@ -2,7 +2,7 @@
  * Bounded Marching Cubes implicit surface extractor for Intersect Phase V6.
  *
  * Implements:
- * 1. Streamlined slice-by-slice grid evaluation with minimal memory footprint (< 100 KB RAM).
+ * 1. Slice-by-slice evaluation with bounded subtree caches and rolling edge storage.
  * 2. Deterministic exact-zero sample handling without division-by-zero or coordinate drifting.
  * 3. Pole and discontinuity rejection (prevents false sheets at poles like 1/x = 0).
  * 4. Safe symbolic power reduction for repeated factors (e.g. x^2 = 0).
@@ -29,11 +29,12 @@ import {
   getEdgeVertices,
 } from './marching-cubes-tables';
 import { generateCoordinateGuides } from './guide-curves';
+import { compileGridEvaluator } from './grid-evaluator';
 
 interface CellCorner {
-  readonly val: number;
-  readonly valid: boolean;
-  readonly isPole: boolean;
+  val: number;
+  valid: boolean;
+  isPole: boolean;
 }
 
 /**
@@ -121,9 +122,16 @@ export function extractImplicitSurface(
   let vertexCount = 0;
   let triangleCount = 0;
 
-  // Global edge vertex cache to weld and share vertices across adjacent cubes:
-  // Key: (axis << 28) | (ex << 19) | (ey << 10) | ez
-  const edgeVertexMap = new Map<number, number>();
+  // Only adjacent Z layers share edges. Rolling typed caches retain identical
+  // welding and vertex order without a large global hash map.
+  const edgeLayerSize = (N + 1) * (N + 1);
+  const horizontalEdges = new Int32Array(4 * edgeLayerSize).fill(-1);
+  const verticalEdges = new Int32Array(edgeLayerSize).fill(-1);
+  const corners: CellCorner[] = Array.from({ length: 8 }, () => ({ val: 0, valid: false, isPole: false }));
+  const cornerPos: [number, number, number][] = Array.from({ length: 8 }, () => [0, 0, 0]);
+  const edgeVertexIndices = new Int32Array(12);
+  const getCorner = (index: number) => corners[index]!;
+  const getCornerPos = (index: number) => cornerPos[index]!;
 
   let evalCount = 0;
   let cellsProcessed = 0;
@@ -163,17 +171,49 @@ export function extractImplicitSurface(
   const slice1Valid = new Uint8Array(sliceSize);
   const slice1Pole = new Uint8Array(sliceSize);
 
+  const variesX = evaluator.dependencies.has('x');
+  const variesY = evaluator.dependencies.has('y');
+  const variesZ = evaluator.dependencies.has('z');
+  const fastEvaluate = evaluator.evaluateNumeric;
+  const evaluateGrid = fastEvaluate ? compileGridEvaluator(meshingResidual, renderRegion, N) : null;
+
   function evaluateSlice(
     zCoord: number,
     vals: Float64Array,
     valids: Uint8Array,
     poles: Uint8Array,
+    zIndex: number,
   ) {
     let idx = 0;
     for (let j = 0; j <= Ny; j++) {
+      if (j > 0 && !variesY) {
+        vals.copyWithin(idx, 0, Nx + 1);
+        valids.copyWithin(idx, 0, Nx + 1);
+        poles.copyWithin(idx, 0, Nx + 1);
+        idx += Nx + 1;
+        continue;
+      }
       const yCoord = minY + j * dy;
       for (let i = 0; i <= Nx; i++) {
+        if (i > 0 && !variesX) {
+          vals[idx] = vals[idx - 1]!;
+          valids[idx] = valids[idx - 1]!;
+          poles[idx] = poles[idx - 1]!;
+          idx++;
+          continue;
+        }
         const xCoord = minX + i * dx;
+        // Successful scalar evaluation is allocation-free; invalid samples retain
+        // the original interpreter's exact domain and pole diagnostics.
+        if (fastEvaluate) {
+          const value = evaluateGrid ? evaluateGrid(i, j, zIndex) : fastEvaluate(xCoord, yCoord, zCoord);
+          if (Number.isFinite(value)) {
+            evalCount++;
+            vals[idx] = value; valids[idx] = 1; poles[idx] = 0;
+            idx++;
+            continue;
+          }
+        }
         const res = evaluator.evaluate(xCoord, yCoord, zCoord);
         evalCount++;
         if (res.valid) {
@@ -191,7 +231,7 @@ export function extractImplicitSurface(
   }
 
   // Pre-evaluate z = 0 slice
-  evaluateSlice(minZ, slice0Val, slice0Valid, slice0Pole);
+  evaluateSlice(minZ, slice0Val, slice0Valid, slice0Pole, 0);
 
   // Main marching cubes loop over z slices
   sliceLoop: for (let k = 0; k < Nz; k++) {
@@ -221,8 +261,17 @@ export function extractImplicitSurface(
     }
 
     const z1 = minZ + (k + 1) * dz;
-    evaluateSlice(z1, slice1Val, slice1Valid, slice1Pole);
+    if (variesZ) evaluateSlice(z1, slice1Val, slice1Valid, slice1Pole, k + 1);
+    else {
+      slice1Val.set(slice0Val);
+      slice1Valid.set(slice0Valid);
+      slice1Pole.set(slice0Pole);
+    }
 
+    const nextLayerOffset = ((k + 1) & 1) * edgeLayerSize;
+    horizontalEdges.fill(-1, nextLayerOffset, nextLayerOffset + edgeLayerSize);
+    horizontalEdges.fill(-1, 2 * edgeLayerSize + nextLayerOffset, 3 * edgeLayerSize + nextLayerOffset);
+    verticalEdges.fill(-1);
     const z0 = minZ + k * dz;
 
     // Process all cells in this layer
@@ -241,74 +290,26 @@ export function extractImplicitSurface(
         const idx11 = (j + 1) * (Nx + 1) + (i + 1);
         const idx01 = (j + 1) * (Nx + 1) + i;
 
-        // 8 corner values and validity
-        const c0: CellCorner = {
-          val: slice0Val[idx00] ?? NaN,
-          valid: (slice0Valid[idx00] ?? 0) === 1,
-          isPole: (slice0Pole[idx00] ?? 0) === 1,
-        };
-        const c1: CellCorner = {
-          val: slice0Val[idx10] ?? NaN,
-          valid: (slice0Valid[idx10] ?? 0) === 1,
-          isPole: (slice0Pole[idx10] ?? 0) === 1,
-        };
-        const c2: CellCorner = {
-          val: slice0Val[idx11] ?? NaN,
-          valid: (slice0Valid[idx11] ?? 0) === 1,
-          isPole: (slice0Pole[idx11] ?? 0) === 1,
-        };
-        const c3: CellCorner = {
-          val: slice0Val[idx01] ?? NaN,
-          valid: (slice0Valid[idx01] ?? 0) === 1,
-          isPole: (slice0Pole[idx01] ?? 0) === 1,
-        };
+        // Reject empty cells using typed arrays before allocating any corner objects.
+        const cubeIndex =
+          (slice0Valid[idx00] && slice0Val[idx00]! >= 0 ? 1 : 0) |
+          (slice0Valid[idx10] && slice0Val[idx10]! >= 0 ? 2 : 0) |
+          (slice0Valid[idx11] && slice0Val[idx11]! >= 0 ? 4 : 0) |
+          (slice0Valid[idx01] && slice0Val[idx01]! >= 0 ? 8 : 0) |
+          (slice1Valid[idx00] && slice1Val[idx00]! >= 0 ? 16 : 0) |
+          (slice1Valid[idx10] && slice1Val[idx10]! >= 0 ? 32 : 0) |
+          (slice1Valid[idx11] && slice1Val[idx11]! >= 0 ? 64 : 0) |
+          (slice1Valid[idx01] && slice1Val[idx01]! >= 0 ? 128 : 0);
+        if (cubeIndex === 0 || cubeIndex === 255) continue;
 
-        const c4: CellCorner = {
-          val: slice1Val[idx00] ?? NaN,
-          valid: (slice1Valid[idx00] ?? 0) === 1,
-          isPole: (slice1Pole[idx00] ?? 0) === 1,
-        };
-        const c5: CellCorner = {
-          val: slice1Val[idx10] ?? NaN,
-          valid: (slice1Valid[idx10] ?? 0) === 1,
-          isPole: (slice1Pole[idx10] ?? 0) === 1,
-        };
-        const c6: CellCorner = {
-          val: slice1Val[idx11] ?? NaN,
-          valid: (slice1Valid[idx11] ?? 0) === 1,
-          isPole: (slice1Pole[idx11] ?? 0) === 1,
-        };
-        const c7: CellCorner = {
-          val: slice1Val[idx01] ?? NaN,
-          valid: (slice1Valid[idx01] ?? 0) === 1,
-          isPole: (slice1Pole[idx01] ?? 0) === 1,
-        };
-
-        const corners: readonly [
-          CellCorner,
-          CellCorner,
-          CellCorner,
-          CellCorner,
-          CellCorner,
-          CellCorner,
-          CellCorner,
-          CellCorner,
-        ] = [c0, c1, c2, c3, c4, c5, c6, c7];
-
-        const getCorner = (idx: number): CellCorner => corners[idx] ?? c0;
-
-        // If any corner is a pole or invalid, check whether this cell can be safely meshed.
-        let cubeIndex = 0;
-        for (let m = 0; m < 8; m++) {
-          const cm = getCorner(m);
-          if (cm.valid && cm.val >= 0) {
-            cubeIndex |= 1 << m;
-          }
-        }
-
-        // Trivial rejection: all inside or all outside
-        if (cubeIndex === 0 || cubeIndex === 255) {
-          continue;
+        // Reuse corner storage for occupied cells; empty cells allocate nothing.
+        const offsets = [idx00, idx10, idx11, idx01];
+        for (let c = 0; c < 8; c++) {
+          const offset = offsets[c & 3]!;
+          const corner = corners[c]!;
+          corner.val = (c < 4 ? slice0Val : slice1Val)[offset]!;
+          corner.valid = (c < 4 ? slice0Valid : slice1Valid)[offset] === 1;
+          corner.isPole = (c < 4 ? slice0Pole : slice1Pole)[offset] === 1;
         }
 
         const edgeMask = getEdgeMask(cubeIndex);
@@ -332,20 +333,12 @@ export function extractImplicitSurface(
           continue;
         }
 
-        // Corner 3D positions
-        const cornerPos: readonly (readonly [number, number, number])[] = [
-          [x0, y0, z0], // 0
-          [x1, y0, z0], // 1
-          [x1, y1, z0], // 2
-          [x0, y1, z0], // 3
-          [x0, y0, z1], // 4
-          [x1, y0, z1], // 5
-          [x1, y1, z1], // 6
-          [x0, y1, z1], // 7
-        ];
-
-        const getCornerPos = (idx: number): readonly [number, number, number] =>
-          cornerPos[idx] ?? [x0, y0, z0];
+        for (let c = 0; c < 8; c++) {
+          const position = cornerPos[c]!;
+          position[0] = c === 1 || c === 2 || c === 5 || c === 6 ? x1 : x0;
+          position[1] = c === 2 || c === 3 || c === 6 || c === 7 ? y1 : y0;
+          position[2] = c >= 4 ? z1 : z0;
+        }
 
         // Mid-edge pole and jump check:
         // For rational poles like 1/x = 0, opposite signs can occur across the pole without a true zero.
@@ -359,7 +352,10 @@ export function extractImplicitSurface(
             const midY = (pA[1] + pB[1]) * 0.5;
             const midZ = (pA[2] + pB[2]) * 0.5;
 
-            const midEval = evaluator.evaluate(midX, midY, midZ);
+            const midValue = fastEvaluate?.(midX, midY, midZ);
+            const midEval = midValue !== undefined && Number.isFinite(midValue)
+              ? { value: midValue, valid: true, isPole: false }
+              : evaluator.evaluate(midX, midY, midZ);
             evalCount++;
             if (!midEval.valid || midEval.isPole) {
               hasPoleJump = true;
@@ -385,7 +381,6 @@ export function extractImplicitSurface(
         }
 
         // Interpolate vertices along cut edges
-        const edgeVertexIndices: number[] = new Array(12);
 
         for (let e = 0; e < 12; e++) {
           if ((edgeMask & (1 << e)) !== 0) {
@@ -410,10 +405,11 @@ export function extractImplicitSurface(
               case 11: axis = 2; ex = i; ey = j + 1; ez = k; break;
             }
 
-            const edgeKey = (axis << 30) | (ex << 20) | (ey << 10) | ez;
-            const existingVIdx = edgeVertexMap.get(edgeKey);
+            const cache = axis === 2 ? verticalEdges : horizontalEdges;
+            const edgeKey = (axis === 2 ? 0 : (axis * 2 + (ez & 1)) * edgeLayerSize) + ey * (N + 1) + ex;
+            const existingVIdx = cache[edgeKey]!;
 
-            if (existingVIdx !== undefined) {
+            if (existingVIdx !== -1) {
               edgeVertexIndices[e] = existingVIdx;
               continue;
             }
@@ -480,7 +476,7 @@ export function extractImplicitSurface(
 
             vertexCount++;
             edgeVertexIndices[e] = vIdx;
-            edgeVertexMap.set(edgeKey, vIdx);
+            cache[edgeKey] = vIdx;
 
             // Check vertex budget limit
             if (vertexCount >= budget.maxVerticesPerMesh) {
