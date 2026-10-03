@@ -1,7 +1,7 @@
 # Intersect — Phase V11 Performance & Accessibility Budgets
 
-Document revision: 1
-Date: 2026-10-02
+Document revision: 2
+Date: 2026-10-03
 Environment: Linux x86_64, Node v26.10.0, Headless Chromium (/opt/google/chrome/chrome) with SwiftShader (software WebGL 2.0 Angle), Vite production preview.
 
 ## 1. Baseline Measurements Summary
@@ -42,12 +42,17 @@ Based on repository facts and the tested environment, the following budgets are 
 
 ### C. Geometry & Rendering Budgets
 1. **Idle Render Loop Shutdown**: $\mathbf{0}\text{ rAF frames}$ once animation playback has completed and camera controls have settled (zero idle CPU/GPU consumption).
-2. **Device Pixel Ratio**: Capped at $2.0$ on high-DPI screens to prevent excessive fill-rate and memory pressure.
+2. **Device Pixel Ratio**: Auto and Low retain the former High cap of 2.5. Resize uses the active cap consistently; line widths use CSS-pixel viewport dimensions.
 3. **Hardware Rendering Target**: $\le 16.7\text{ ms}$ (60 FPS) on discrete/integrated GPU profiles; $\le 66.7\text{ ms}$ (15 FPS minimum) under CPU software SwiftShader emulation.
-4. **Adaptive Quality Presets**:
-   - `draft`: 40 grid resolution, $\le 100\text{k}$ vertices, $\le 200\text{k}$ triangles.
-   - `default`: 64 grid resolution, $\le 250\text{k}$ vertices, $\le 500\text{k}$ triangles.
-   - Reference-scale visibility: surfaces remain visible without clipping or disappearing at reduced detail.
+4. **Public Detail Modes (2026-10-03)**:
+   - `Auto` (default): 144–192 grid cells per axis, with padded fractional render bounds following the camera target and scale. Close zoom narrows cells in world space and tightens curve tolerance to at most a quarter of a projected pixel (subject to a 0.00001-unit floor).
+   - `Low`: the previous High configuration, 112 cells per axis, 750k vertices / 1.5M triangles per surface, 14k curve samples, 0.002-unit curve tolerance, and a 50-unit minimum region half-span.
+   - Auto limits: 1M vertices / 2M triangles per surface, 24k curve samples, 17 subdivision levels, and a 20-second extraction limit per surface. Partial meshes retain their explicit geometry status. The existing controller adds a finite job timeout.
+   - Navigation settles for 350ms before requests. Hysteresis prevents remeshing on every interaction frame; the previous mesh remains visible while its replacement is generated in a dedicated worker. Superseded synchronous meshing workers are terminated immediately to prevent a backlog.
+   - Zoom-out is limited to 1.4 times the reference framing distance, adjusted for aspect ratio and once for a new curve's bounds. Camera target bounds remain [-1000, 1000] on all axes. Near clipping adapts to camera distance.
+   - Axis labels grow gently from 13 to 19 CSS pixels, with high-resolution local textures, projected collision checks, locale-aware 1/2/5 ticks including odd/fractional values, and reference-counted texture disposal.
+   - Legacy worker presets remain accepted internally for compatibility; only Auto and Low are offered by the UI.
+   - Rendering is a bounded display approximation; no finite mesh promises unlimited detail or changes the exact mathematical result. Timings depend on hardware and expression complexity. Software-rendered Chromium is slower than native GPU rendering.
 
 ### D. Memory & Lifecycle Budgets
 1. **Heap Growth Plateau**: $\le 10\text{ MB}$ net drift across repeated calculation and modification cycles.

@@ -20,15 +20,15 @@ const manifest = JSON.parse(fs.readFileSync('dist/cache-manifest.json', 'utf8'))
 assert(!manifest.assets.some((asset) => /\/(?:_headers|_redirects|_routes\.json)$/.test(asset)), 'Hosting controls must not be cached as runtime assets');
 assert(fs.existsSync('dist/_headers'), 'Pages cache headers missing');
 console.log(`PASS: Pages limits, ${paths.length} files, complete distribution and hosting control exclusion.`);
-const origin = `http://localhost:${port}`;
+const origin = process.env.INTERSECT_URL ? new URL(process.env.INTERSECT_URL).origin : `http://localhost:${port}`;
 const chrome = process.env.CHROME_PATH || [
   '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome', '/usr/bin/chromium',
 ].find((candidate) => fs.existsSync(candidate));
 assert(chrome, 'Install Chromium or set CHROME_PATH.');
-const preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(port), '--strictPort'], { stdio: 'pipe' });
+const preview = process.env.INTERSECT_URL ? null : spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(port), '--strictPort'], { stdio: 'pipe' });
 let browser;
 try {
-  await new Promise((resolve, reject) => {
+  if (preview) await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Preview startup timed out')), 15000);
     preview.stdout.on('data', (data) => {
       if (data.toString().includes('Local:')) { clearTimeout(timer); resolve(); }
@@ -49,6 +49,44 @@ try {
     await session.send('Runtime.enable');
   });
   const page = await browser.newPage();
+  await page.emulateMediaFeatures([
+    { name: 'prefers-reduced-motion', value: 'reduce' },
+    { name: 'prefers-color-scheme', value: 'dark' },
+  ]);
+  await page.evaluateOnNewDocument(() => {
+    window.__renderAudit = { requests: [], results: [], frames: 0 };
+    const originalFrame = window.requestAnimationFrame;
+    window.requestAnimationFrame = (callback) => {
+      window.__renderAudit.frames++;
+      return originalFrame(callback);
+    };
+    const OriginalWorker = window.Worker;
+    window.Worker = class extends OriginalWorker {
+      constructor(...args) {
+        super(...args);
+        this.addEventListener('message', (event) => {
+          if (event.data.type !== 'geometry-result') return;
+          const result = event.data.result;
+          let radialError = 0;
+          const positions = result.surfaceF.positions;
+          for (let i = 0; i < positions.length; i += 3) {
+            radialError = Math.max(radialError, Math.abs(Math.hypot(positions[i], positions[i + 1]) - 2));
+          }
+          window.__renderAudit.results.push({ jobId: result.jobId, region: result.renderRegion,
+            radialError, cells: result.surfaceF.diagnostics.cellsProcessed,
+            triangles: result.surfaceF.triangleCount, duration: result.totalDurationMs,
+            fStatus: result.surfaceF.status, gStatus: result.surfaceG.status });
+        });
+      }
+      postMessage(message, ...args) {
+        if (message.type === 'generate-geometry') {
+          const { jobId, view, quality, renderRegion } = message.request;
+          window.__renderAudit.requests.push({ jobId, view, quality, renderRegion });
+        }
+        return super.postMessage(message, ...args);
+      }
+    };
+  });
   const external = [];
   const errors = [];
   page.on('request', (request) => {
@@ -59,6 +97,7 @@ try {
   await page.setViewport({ width: 1280, height: 800 });
   await page.goto(origin, { waitUntil: 'networkidle0' });
   await page.waitForSelector('canvas');
+  assert.equal(await page.$eval('#quality-toggle-btn', (el) => el.textContent.trim()), 'Detalle: Auto');
   assert.equal(await page.$eval('html', (el) => el.lang), 'es');
   const spanish = await page.$eval('.app-credits', (el) => el.textContent);
   assert(spanish.includes('Creado y desarrollado por Angel Joseph Estrada Santos (@juxdeveloper)'));
@@ -67,6 +106,61 @@ try {
   const english = await page.$eval('.app-credits', (el) => el.textContent);
   assert(english.includes('Created & Developed by Angel Joseph Estrada Santos (@juxdeveloper)'));
   assert(english.includes('Collaborator: Hanniel Cardoso Jaramillo (@HannDev2)'));
+  assert(english.includes('Free software under GNU GPL 3.0 or later.'));
+  const creditLinks = await page.$$eval('.app-credits a', (links) => links.map((link) => ({
+    href: link.href, icon: Boolean(link.querySelector('svg')), label: link.getAttribute('aria-label'), rel: link.rel,
+  })));
+  for (const path of ['https://github.com/juxdeveloper', 'https://github.com/HannDev2', 'https://www.instagram.com/juxdeveloper/']) {
+    const link = creditLinks.find((item) => item.href === path);
+    assert(link?.icon && link.label && link.rel.includes('noopener'), `Missing accessible profile: ${path}`);
+  }
+  assert((await page.evaluate(async () => fetch('./LICENSE').then((response) => response.text()))).includes('GNU GENERAL PUBLIC LICENSE'));
+  const waitForGeometry = async () => page.waitForFunction(() => {
+    const audit = window.__renderAudit;
+    return audit.requests.length && audit.results.at(-1)?.jobId === audit.requests.at(-1)?.jobId
+      && !document.querySelector('.graph-status-pill.loading');
+  }, { timeout: 60000 });
+  await waitForGeometry();
+  const formula = await page.$eval('.curve-equation math-field', (el) => el.value);
+  await page.click('#quality-toggle-btn');
+  assert.equal(await page.$eval('#quality-toggle-btn', (el) => el.textContent.trim()), 'Detail: Low');
+  await waitForGeometry();
+  const low = await page.evaluate(() => window.__renderAudit.results.at(-1));
+  assert.equal(low.cells, 112 ** 3, 'Low must retain the previous High grid');
+  await page.click('#quality-toggle-btn');
+  assert.equal(await page.$eval('#quality-toggle-btn', (el) => el.textContent.trim()), 'Detail: Auto');
+  await waitForGeometry();
+  const initial = await page.evaluate(() => window.__renderAudit.requests.at(-1).view);
+  const canvas = await page.$eval('.three-viewport-canvas', (el) => {
+    const rect = el.getBoundingClientRect(); return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(canvas.x, canvas.y);
+  for (let i = 0; i < 6; i++) await page.mouse.wheel({ deltaY: -600 });
+  await waitForGeometry();
+  // The view update is debounced until wheel movement stops.
+  await page.waitForFunction((distance) => window.__renderAudit.requests.at(-1).view.distance < distance * 0.25,
+    { timeout: 15000 }, initial.distance);
+  await waitForGeometry();
+  const near = await page.evaluate(() => window.__renderAudit.results.at(-1));
+  assert(near.radialError < low.radialError * 0.15, `Cylinder accuracy failed: ${JSON.stringify({ low, near })}`);
+  assert.equal(near.fStatus, 'success');
+  assert.equal(near.gStatus, 'success');
+  assert.equal(await page.$eval('.curve-equation math-field', (el) => el.value), formula, 'Zoom changed the exact formula');
+  const artifacts = process.env.INTERSECT_ARTIFACT_DIR;
+  if (artifacts) {
+    fs.mkdirSync(artifacts, { recursive: true });
+    await page.screenshot({ path: `${artifacts}/close-auto.png` });
+  }
+  for (let i = 0; i < 30; i++) await page.mouse.wheel({ deltaY: 1000 });
+  await page.waitForFunction((distance) => window.__renderAudit.requests.at(-1).view.distance > distance,
+    { timeout: 15000 }, initial.distance);
+  await waitForGeometry();
+  const far = await page.evaluate(() => window.__renderAudit.requests.at(-1).view);
+  assert(far.distance <= initial.distance * 1.4 + 0.01, `Excessive zoom-out: ${far.distance}`);
+  const count = await page.evaluate(() => window.__renderAudit.frames);
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  assert.equal(await page.evaluate(() => window.__renderAudit.frames), count, 'Idle render loop stayed active');
+  console.log(`PASS: Auto/Low, previous High retained, close cylinder accuracy, bounded zoom, unchanged exact math, idle loop (${JSON.stringify({ initialDistance: initial.distance, maximumDistance: far.distance, lowError: low.radialError, autoError: near.radialError, nearDurationMs: near.duration })}).`);
   for (const width of [1280, 768, 390]) {
     await page.setViewport({ width, height: 844, isMobile: width === 390, hasTouch: width === 390 });
     await page.$eval('.app-credits', (el) => el.scrollIntoView());
@@ -77,6 +171,8 @@ try {
     });
     assert(layout.width > 0 && layout.left >= 0 && layout.right <= layout.viewport + 1, JSON.stringify(layout));
     assert(!layout.overflow && !layout.pageOverflow, `Overflow at ${width}px`);
+    await waitForGeometry();
+    if (artifacts) await page.screenshot({ path: `${artifacts}/credits-${width}.png` });
   }
   console.log('PASS: ES/EN credits, desktop/tablet/mobile layout, WebGL canvas.');
   await page.waitForFunction(async () => {
@@ -122,5 +218,5 @@ try {
   console.log('PASS: zero external runtime requests and uncaught browser errors.');
 } finally {
   if (browser) await browser.close();
-  preview.kill('SIGTERM');
+  preview?.kill('SIGTERM');
 }

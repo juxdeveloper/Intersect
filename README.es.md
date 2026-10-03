@@ -18,7 +18,7 @@ Todos los cálculos, el renderizado y el almacenamiento del historial se ejecuta
 - Fórmula de la curva activa, dominio real del parámetro y procedimiento inicialmente contraído.
 - Recorrido anverso/reverso, animación de la curva, repetición y colores personalizados.
 - Escena interactiva de Three.js con **+Z hacia arriba**, ejes de colores, marcas numeradas, superficies translúcidas y rotación, desplazamiento y zoom con ratón o pantalla táctil.
-- Detalle gráfico Bajo, Medio y Alto; Alto es el valor predeterminado.
+- Detalle gráfico **Auto** predeterminado: el muestreo de superficies y curvas se refina al terminar el zoom o desplazamiento. **Bajo** conserva el presupuesto del antiguo nivel Alto. El alejamiento tiene un límite útil; el texto nítido de los ejes cambia dentro de límites legibles y muestra marcas más finas cuando hay espacio.
 - Español por defecto, cambio a inglés y temas persistentes Automático/Claro/Oscuro.
 - Historial local de cálculos en IndexedDB, hasta 100 entradas, con almacenamiento alternativo en memoria cuando el almacenamiento persistente no está disponible.
 - Diseño adaptable, controles de teclado, compatibilidad con movimiento reducido e instalación como PWA sin conexión en navegadores compatibles.
@@ -83,7 +83,7 @@ npm run preview
 1. Introduce una ecuación en cada campo de superficie. La vista previa se actualiza mientras escribes; los cambios válidos activan el cálculo automático.
 2. Lee la fórmula y el dominio del parámetro, o el motivo indicado por el que no se pudo determinar un resultado.
 3. Abre el procedimiento para revisar los pasos del cálculo. Cambia la orientación para invertir el recorrido.
-4. Gira, desplaza y amplía el gráfico con ratón o pantalla táctil. Utiliza el control de detalle para ajustar la calidad gráfica.
+4. Gira, desplaza y amplía el gráfico con ratón o pantalla táctil. Utiliza Auto para detalle adaptable al zoom o Bajo para el anterior presupuesto fijo de Alto.
 5. Abre Historial para restaurar o eliminar cálculos. El historial pertenece al origen actual del navegador y el navegador puede borrarlo.
 6. Cambia el idioma o el tema en la cabecera. Espera a que termine la preparación antes de depender del acceso sin conexión.
 
@@ -101,12 +101,12 @@ Vite utiliza `base: './'` para rutas de recursos relativas y alojamiento en subd
 
 ## Cloudflare Pages
 
-**Sitio publicado:** [Intersect](https://intersect-4z0.pages.dev/). La versión de producción actual se desplegó mediante Direct Upload con Wrangler. El despliegue continuo desde GitHub no está conectado. Para publicar una compilación actualizada con una cuenta de Cloudflare autenticada:
+**Sitio publicado:** [Intersect](https://intersect-juxdeveloper.pages.dev/). La versión de producción actual se desplegó mediante Direct Upload con Wrangler. El despliegue continuo desde GitHub no está conectado. Para publicar una compilación actualizada con una cuenta de Cloudflare autenticada:
 
 ```sh
 npm ci
 npm run build
-wrangler pages deploy dist --project-name intersect --branch main
+wrangler pages deploy dist --project-name intersect-juxdeveloper --branch main
 ```
 
 Para configurar otro proyecto de Pages conectado a Git, conecta este repositorio de GitHub a un proyecto de Cloudflare **Pages** con estos ajustes:
@@ -129,6 +129,7 @@ Consulta las referencias de Cloudflare sobre [configuración de compilación](ht
 ## Autores
 
 - **Creador y desarrollador principal:** Angel Joseph Estrada Santos ([@juxdeveloper](https://github.com/juxdeveloper)) — arquitectura, motor matemático, algoritmos 3D, flujo de estado y funciones principales.
+- **Instagram:** [@juxdeveloper](https://www.instagram.com/juxdeveloper/).
 - **Colaborador:** Hanniel Cardoso Jaramillo ([@HannDev2](https://github.com/HannDev2)) — controles de interfaz, estilos adaptables, localización al español y documentación para usuarios.
 
 ## Licencia
@@ -140,3 +141,5 @@ Intersect se distribuye bajo la **Licencia Pública General de GNU v3.0 o poster
 Consulta la [arquitectura](docs/architecture.md), los [presupuestos de rendimiento](docs/performance-budgets.md) y [MASTER.md](MASTER.md) para conocer los detalles de implementación, las comprobaciones verificadas y las limitaciones conocidas. Algunos scripts de navegador de fases anteriores esperan controles de interfaz sustituidos; son comprobaciones históricas y no la prueba básica de la versión actual.
 
 El historial inicial de Git público es una **reconstrucción retrospectiva** del árbol de trabajo existente, creada el 3 de octubre de 2026. Sus hitos con fechas anteriores y las atribuciones de autor solicitadas organizan la publicación; no constituyen evidencia contemporánea de cuándo o por quién se desarrolló cada archivo original. La reconstrucción contiene 200 commits: 160 atribuidos al desarrollador principal y 40 al colaborador, con fechas de autor y de creación del commit coincidentes y distribuidas durante los 21 días anteriores.
+
+Seis commits posteriores de implementación incorporan renderizado adaptable, zoom limitado, ejes legibles, créditos bilingües con enlaces y el dominio de producción anterior, para un total de 206 commits. Estos cambios utilizan las fechas actuales y conservan el historial reconstruido original.

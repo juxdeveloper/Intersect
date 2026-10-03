@@ -18,7 +18,7 @@ All calculation, rendering, and history storage run locally in your browser. The
 - An active curve formula, real parameter domain, and initially collapsed derivation.
 - Forward/reverse traversal, curve animation, replay, and custom curve colors.
 - Interactive Three.js scene with **+Z up**, colored axes, numbered ticks, translucent surfaces, and mouse/touch orbit, pan, and zoom.
-- Low, Medium, and High graphics detail; High is the default.
+- **Auto** graphics detail by default: surface and curve sampling refine after zoom or pan settles. **Low** retains the previous High detail budget. Zoom-out is bounded to a useful overview; crisp axis text scales within readable limits and reveals finer ticks when space allows.
 - Spanish by default, an English switch, and persistent Auto/Light/Dark themes.
 - Local IndexedDB calculation history, up to 100 entries, with a memory fallback when storage is unavailable.
 - Responsive layout, keyboard controls, reduced-motion support, and offline PWA installation in supporting browsers.
@@ -83,7 +83,7 @@ npm run preview
 1. Enter an equation in each surface field. The preview updates while typing; valid changes trigger automatic calculation.
 2. Read the formula and parameter domain, or the stated reason a result could not be determined.
 3. Expand the procedure to inspect the calculation steps. Change direction to reverse traversal.
-4. Orbit, pan, and zoom the graph with mouse or touch. Use the detail control to adjust graphics quality.
+4. Orbit, pan, and zoom the graph with mouse or touch. Use Auto for zoom-adaptive detail or Low for the previous fixed High budget.
 5. Open History to restore or delete calculations. History belongs to the current browser origin and can be cleared by the browser.
 6. Switch language or theme in the header. Wait for offline preparation before relying on offline access.
 
@@ -101,12 +101,12 @@ Vite uses `base: './'` for relative assets and subdirectory hosting. Keep the fu
 
 ## Cloudflare Pages
 
-**Live site:** [Intersect](https://intersect-4z0.pages.dev/). The current production release was deployed with Wrangler Direct Upload. GitHub continuous deployment is not connected. To publish an updated build with an authenticated Cloudflare account:
+**Live site:** [Intersect](https://intersect-juxdeveloper.pages.dev/). The current production release was deployed with Wrangler Direct Upload. GitHub continuous deployment is not connected. To publish an updated build with an authenticated Cloudflare account:
 
 ```sh
 npm ci
 npm run build
-wrangler pages deploy dist --project-name intersect --branch main
+wrangler pages deploy dist --project-name intersect-juxdeveloper --branch main
 ```
 
 To configure a separate Git-connected Pages project, connect this GitHub repository to a Cloudflare **Pages** project with these settings:
@@ -129,6 +129,7 @@ See Cloudflare's [build configuration](https://developers.cloudflare.com/pages/c
 ## Authors
 
 - **Creator & Lead Developer:** Angel Joseph Estrada Santos ([@juxdeveloper](https://github.com/juxdeveloper)) — architecture, math engine, 3D algorithms, state pipeline, and core features.
+- **Instagram:** [@juxdeveloper](https://www.instagram.com/juxdeveloper/).
 - **Collaborator:** Hanniel Cardoso Jaramillo ([@HannDev2](https://github.com/HannDev2)) — UI controls, responsive styling, Spanish localization, and user documentation.
 
 ## License
@@ -140,3 +141,5 @@ Intersect is licensed under the **GNU General Public License v3.0 or later (GPL-
 See [architecture](docs/architecture.md), [performance budgets](docs/performance-budgets.md), and [MASTER.md](MASTER.md) for implementation details, verified checks, and known limitations. Some older phase-specific browser scripts expect superseded UI controls; they are historical checks rather than the current release smoke test.
 
 The initial public Git history is a **retrospective reconstruction** of the existing working tree, created on October 3, 2026. Its backdated milestones and requested author assignments organize the release; they are not contemporaneous evidence of when or by whom each original file was developed. The reconstruction contains 200 commits: 160 attributed to the lead and 40 to the collaborator, with matching author and committer timestamps distributed over the preceding 21 days.
+
+Six subsequent implementation commits add adaptive rendering, bounded zoom, readable axes, linked bilingual credits, and the production hostname above, bringing the repository to 206 commits. These changes use current commit dates and preserve the original reconstructed history.

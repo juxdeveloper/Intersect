@@ -8,7 +8,7 @@
  * - Network-First for document navigation with offline fallback so updates are instantly picked up.
  */
 
-const CACHE_VERSION = 'v1.0.5';
+const CACHE_VERSION = 'v1.0.6';
 const CACHE_NAME = `intersect-${CACHE_VERSION}`;
 
 // Core shell assets always cached immediately
