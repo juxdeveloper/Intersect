@@ -11,7 +11,7 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { WorldBounds } from '../contracts/bounds';
-import type { GeometryResult, MeshGeometryBuffer, CurveGeometryBuffer } from '../contracts/geometry';
+import type { GeometryResult, MeshGeometryBuffer, CurveGeometryBuffer, GeometryView, GeometryQualityPreset } from '../contracts/geometry';
 import type { ThreeSceneControllerOptions, ViewportStatus } from './types';
 import {
   createSurfaceFMaterial,
@@ -27,6 +27,8 @@ import {
 } from './materials';
 import { CoordinateFrameManager } from './grid-axes';
 import { CurveAnimator, type AnimationState } from './curve-animator';
+import { visibleRenderRegion } from '../geometry/view-detail';
+import { navigationDistances } from './navigation';
 
 export class ThreeSceneController {
   private container: HTMLElement | null = null;
@@ -54,6 +56,9 @@ export class ThreeSceneController {
   // Retained state for context restoration and change detection
   private lastGeometryResult: GeometryResult | null = null;
   private activeCalculationId: string | number | null = null;
+  private quality: GeometryQualityPreset = 'auto';
+  private referenceRadius = 15;
+  private lastRequestedView: GeometryView | null = null;
   private currentRenderRegion: WorldBounds = {
     x: { min: -50, max: 50 },
     y: { min: -50, max: 50 },
@@ -74,6 +79,7 @@ export class ThreeSceneController {
 
   // Callbacks
   private readonly onRegionChange?: (newRegion: WorldBounds) => void;
+  private readonly onViewChange?: (view: GeometryView) => void;
   private readonly onStatusChange?: (status: ViewportStatus) => void;
   private readonly onAnimationStateChange?: (state: AnimationState) => void;
 
@@ -82,6 +88,7 @@ export class ThreeSceneController {
       this.activeCurveColor = options.initialCurveColor;
     }
     this.onRegionChange = options.onRegionChange;
+    this.onViewChange = options.onViewChange;
     this.onStatusChange = options.onStatusChange;
     this.onAnimationStateChange = options.onAnimationStateChange;
     this.mount(options.container);
@@ -210,8 +217,6 @@ export class ThreeSceneController {
       this.controls.target.set(0, 0, 0);
       this.controls.enableDamping = true;
       this.controls.dampingFactor = 0.05;
-      this.controls.minDistance = 2.0;
-      this.controls.maxDistance = 3500.0;
       this.controls.minPolarAngle = 0.01;
       this.controls.maxPolarAngle = Math.PI - 0.01;
       this.controls.touches = {
@@ -224,6 +229,7 @@ export class ThreeSceneController {
 
       // 10. Event Listeners
       this.attachEventListeners();
+      this.scheduleRegionCheck();
 
       // Initial render
       this.render();
@@ -259,13 +265,10 @@ export class ThreeSceneController {
     if (!this.camera || !this.controls) return;
 
     // Frame the active reference region (radius ~15) to comfortably fill the viewport without empty void borders
-    const R = 15.0;
-    const vFovRad = (this.camera.fov * Math.PI) / 180;
-    const tanHalfVFov = Math.tan(vFovRad / 2);
-    // Limiting half angle depends on aspect ratio
-    const limitingTan = aspect >= 1.0 ? tanHalfVFov : tanHalfVFov * aspect;
-    // Distance required to contain bounding sphere with 15% visual padding
-    const distance = (R * 1.15) / limitingTan;
+    const limits = navigationDistances(aspect, this.camera.fov, this.referenceRadius);
+    const distance = limits.framing;
+    this.controls.minDistance = limits.min;
+    this.controls.maxDistance = limits.max;
 
     // Oblique unit vector matching reference (+X down-left, +Y down-right, +Z up)
     const dir = new THREE.Vector3(1.15, -1.35, 0.95).normalize();
@@ -321,6 +324,13 @@ export class ThreeSceneController {
   };
 
   private handleControlsChange = (): void => {
+    if (this.camera && this.controls) {
+      const near = Math.max(0.005, this.camera.position.distanceTo(this.controls.target) * 0.002);
+      if (Math.abs(this.camera.near - near) > near * 0.05) {
+        this.camera.near = near;
+        this.camera.updateProjectionMatrix();
+      }
+    }
     if (this.camera && this.coordManager) {
       this.coordManager.updateForCamera(this.camera);
     }
@@ -401,7 +411,7 @@ export class ThreeSceneController {
    * debouncing geometry region requests to avoid excessive meshing.
    */
   private scheduleRegionCheck(): void {
-    if (!this.onRegionChange || !this.controls || !this.camera) return;
+    if (!this.controls || !this.camera || this.isDisposed) return;
 
     if (this.regionDebounceTimer) {
       clearTimeout(this.regionDebounceTimer);
@@ -409,19 +419,27 @@ export class ThreeSceneController {
 
     this.regionDebounceTimer = setTimeout(() => {
       this.checkAndRequestRegionUpdate();
-    }, 450);
+    }, 350);
   }
 
-  private checkAndRequestRegionUpdate(): void {
-    if (!this.controls || !this.camera || !this.onRegionChange) return;
+  private checkAndRequestRegionUpdate(force = false): void {
+    if (!this.controls || !this.camera || this.isDisposed) return;
 
     const target = this.controls.target;
     const camPos = this.camera.position;
     const distance = camPos.distanceTo(target);
+    const view: GeometryView = {
+      target: { x: target.x, y: target.y, z: target.z }, distance,
+      verticalFov: this.camera.fov, aspect: this.camera.aspect,
+      viewportHeight: this.container?.clientHeight ?? 800,
+    };
 
-    // Compute visible span at current distance
+    // Low retains the previous High region policy; Auto follows the visible scale.
     const vFovRad = (this.camera.fov * Math.PI) / 180;
-    const halfSpan = Math.max(50, Math.min(400, distance * Math.tan(vFovRad / 2) * 1.25));
+    const candidate = visibleRenderRegion(view);
+    const halfSpan = this.quality === 'auto'
+      ? (candidate.x.max - candidate.x.min) / 2
+      : Math.max(50, Math.min(400, distance * Math.tan(vFovRad / 2) * 1.25));
 
     // Current region center and span
     const curXCenter = (this.currentRenderRegion.x.min + this.currentRenderRegion.x.max) / 2;
@@ -432,9 +450,14 @@ export class ThreeSceneController {
     const targetDist = Math.hypot(target.x - curXCenter, target.y - curYCenter, target.z - curZCenter);
     const spanRatio = halfSpan / curSpan;
 
-    // Trigger update if target moved > 40% of span or zoom changed by > 1.8x
-    if (targetDist > curSpan * 0.4 || spanRatio > 1.8 || spanRatio < 0.55) {
-      const newRegion: WorldBounds = {
+    const previous = this.lastRequestedView;
+    const zoomChanged = !previous || Math.abs(Math.log(distance / previous.distance)) > 0.16;
+    const viewportChanged = !previous || previous.aspect !== view.aspect || previous.viewportHeight !== view.viewportHeight;
+
+    // Refine only after navigation settles, and retain old geometry while the worker runs.
+    if (force || targetDist > curSpan * 0.22 || spanRatio > 1.3 || spanRatio < 0.77
+      || (this.quality === 'auto' && (zoomChanged || viewportChanged))) {
+      const newRegion: WorldBounds = this.quality === 'auto' ? candidate : {
         x: {
           min: Math.max(-1000, Math.round(target.x - halfSpan)),
           max: Math.min(1000, Math.round(target.x + halfSpan)),
@@ -450,7 +473,9 @@ export class ThreeSceneController {
       };
 
       this.currentRenderRegion = newRegion;
-      this.onRegionChange(newRegion);
+      this.lastRequestedView = view;
+      this.onRegionChange?.(newRegion);
+      this.onViewChange?.(view);
     }
   }
 
@@ -528,15 +553,22 @@ export class ThreeSceneController {
 
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (this.controls) {
+      const limits = navigationDistances(this.camera.aspect, this.camera.fov, this.referenceRadius);
+      this.controls.minDistance = limits.min;
+      this.controls.maxDistance = limits.max;
+      this.controls.update();
+    }
 
     this.renderer.setSize(w, h, false);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.setQuality(this.quality);
 
     if (this.curveMaterial) {
       this.curveMaterial.resolution.set(w, h);
     }
 
     this.requestRender();
+    this.scheduleRegionCheck();
   }
 
   /**
@@ -555,7 +587,7 @@ export class ThreeSceneController {
       z: { min: -50, max: 50 },
     };
 
-    this.onRegionChange?.(this.currentRenderRegion);
+    this.checkAndRequestRegionUpdate(true);
     this.requestRender();
   }
 
@@ -601,11 +633,13 @@ export class ThreeSceneController {
   /**
    * Adjusts viewport rendering resolution and fidelity to match the active quality preset.
    */
-  public setQuality(quality: 'low' | 'medium' | 'high' | 'draft' | 'default'): void {
+  public setQuality(quality: GeometryQualityPreset): void {
+    const changed = this.quality !== quality;
+    this.quality = quality;
     if (!this.renderer || !this.container || this.isDisposed) return;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     let targetDpr = 1.0;
-    if (quality === 'low' || quality === 'draft') {
+    if (quality === 'draft') {
       targetDpr = Math.min(dpr, 1.25);
     } else if (quality === 'medium' || quality === 'default') {
       targetDpr = Math.min(dpr, 1.75);
@@ -619,10 +653,11 @@ export class ThreeSceneController {
     if (w > 0 && h > 0) {
       this.renderer.setSize(w, h, false);
       if (this.curveMaterial) {
-        this.curveMaterial.resolution.set(w * targetDpr, h * targetDpr);
+        this.curveMaterial.resolution.set(w, h);
       }
     }
     this.requestRender();
+    if (changed) this.checkAndRequestRegionUpdate(true);
   }
 
   /**
@@ -640,6 +675,16 @@ export class ThreeSceneController {
     }
 
     const isNewCalculation = String(result.calculationId) !== String(this.activeCalculationId);
+    if (isNewCalculation && result.curve?.boundingBox && this.controls && this.camera) {
+      const bounds = result.curve.boundingBox;
+      const radius = Math.hypot(bounds.x.max - bounds.x.min, bounds.y.max - bounds.y.min,
+        bounds.z.max - bounds.z.min) / 2;
+      // Update the overview allowance once per calculation, never on zoom refinement.
+      this.referenceRadius = Math.max(15, Math.min(500, radius * 1.15));
+      const limits = navigationDistances(this.camera.aspect, this.camera.fov, this.referenceRadius);
+      this.controls.minDistance = limits.min;
+      this.controls.maxDistance = limits.max;
+    }
     const isDirectionChange =
       result.curve?.traversalOrientation !== undefined &&
       this.activeCurveDirection !== null &&

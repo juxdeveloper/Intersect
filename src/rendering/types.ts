@@ -3,6 +3,7 @@
  */
 
 import type { WorldBounds } from '../contracts/bounds';
+import type { GeometryView } from '../contracts/geometry';
 
 export type ViewportStatusType =
   | 'ready'
@@ -30,6 +31,7 @@ export interface ThreeSceneControllerOptions {
   readonly container: HTMLElement;
   readonly initialCurveColor?: string | number;
   readonly onRegionChange?: (newRegion: WorldBounds) => void;
+  readonly onViewChange?: (view: GeometryView) => void;
   readonly onStatusChange?: (status: ViewportStatus) => void;
   readonly onCameraChange?: (cameraState: CameraStateSnapshot) => void;
   readonly onAnimationStateChange?: (state: AnimationState) => void;
